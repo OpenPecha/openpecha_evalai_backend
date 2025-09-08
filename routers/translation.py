@@ -20,7 +20,9 @@ import os
 import time
 import logging
 from sse_starlette import EventSourceResponse
+from dotenv import load_dotenv
 
+load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -50,23 +52,32 @@ db_dependency = Depends(get_db)
 # Constants - System prompt from environment variable
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a translation engine. Output only the translated text.")
 
-# Model provider mapping
-MODEL_PROVIDERS = {
-    # "gpt-4o-mini": "openai",
-    # "gpt-4o": "openai", 
-    # "gpt-4": "openai",
-    # "gpt-3.5-turbo": "openai",
-    "claude-3-5-sonnet-20241022": "anthropic",
-    "claude-3-5-haiku-20241022": "anthropic", 
-    "claude-3-opus-20240229": "anthropic",
-    "gemini-1.5-pro": "google",
-    "gemini-1.5-flash": "google",
-}
+# Model provider mapping - read from environment variable with fallback
+def get_model_providers():
+    """Get model providers from environment variable with fallback to default configuration"""
+    default_providers = {
+        "claude-3-5-sonnet-20241022": "anthropic",
+        "gemini-1.5-flash": "google",
+    }
+    
+    model_providers_env = os.getenv("MODEL_PROVIDERS")
+    if model_providers_env:
+        try:
+            return json.loads(model_providers_env)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON in MODEL_PROVIDERS environment variable: {e}. Using default configuration.")
+            return default_providers
+    else:
+        logger.info("MODEL_PROVIDERS environment variable not set. Using default configuration.")
+        return default_providers
+
+MODEL_PROVIDERS = get_model_providers()
 
 # Initialize AI clients conditionally
 openai_client = None
 anthropic_client = None
 google_configured = False
+deepseek_client = None
 
 if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
     openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -77,6 +88,13 @@ if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
 if GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
     google_configured = True
+
+# DeepSeek via Novita AI uses OpenAI-compatible API
+if OPENAI_AVAILABLE and os.getenv("DEEPSEEK_API_KEY"):
+    deepseek_client = openai.OpenAI(
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        base_url="https://api.novita.ai/openai"
+    )
 
 def find_cached_translation(db: Session, text: str, model_version_id, prompt: Optional[str] = None) -> Optional[TranslationOutput]:
     """Find existing translation output for the same input, model, and prompt"""
@@ -262,6 +280,42 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
         # Return the actual API error instead of generic message
         yield f"Google API Error: {str(e)}"
 
+async def call_deepseek_model(model: str, text: str, prompt: Optional[str] = None):
+    """Call DeepSeek API via Novita AI for translation (OpenAI-compatible)"""
+    if not deepseek_client:
+        yield "Error: DeepSeek client not configured - no API key provided"
+        return
+        
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if prompt:
+        messages.append({"role": "user", "content": f"Translation instruction: {prompt}"})
+    messages.append({"role": "user", "content": text})
+    
+    try:
+        stream = deepseek_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            max_tokens=8192,  # Increased for better translation capacity
+            temperature=0.1,  # Low temperature for consistent translations
+            top_p=1,
+            presence_penalty=0,
+            frequency_penalty=0,
+            response_format={"type": "text"},
+            extra_body={
+                "top_k": 50,
+                "repetition_penalty": 1,
+                "min_p": 0
+            }
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        # Return the actual API error instead of generic message
+        yield f"DeepSeek API Error: {str(e)}"
+
 async def mock_translation_stream(model: str, text: str, prompt: Optional[str] = None):
     """Mock translation stream for demo purposes"""
     # Simulate translation based on model and content
@@ -298,9 +352,14 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
         if google_configured:
             async for chunk in call_google_model(model, text, prompt):
                 yield chunk
+    
+    elif provider == "deepseek-v3":
+        if deepseek_client:
+            async for chunk in call_deepseek_model(model, text, prompt):
+                yield chunk
       
     else:
-        yield f"Configuration Error: Unknown model provider '{provider}' for model '{model}'. Supported providers: openai, anthropic, google"
+        yield f"Configuration Error: Unknown model provider '{provider}' for model '{model}'. Supported providers: openai, anthropic, google, deepseek-v3"
 
 @router.post("/stream")
 async def translate_text(
@@ -318,10 +377,11 @@ async def translate_text(
     
     # Log credential status when endpoint is triggered
     logger.info(f"Translation endpoint triggered for model: {model}")
-    logger.info(f"Credential status check:")
+    logger.info("Credential status check:")
     logger.info(f"  OPENAI_API_KEY exists: {'OPENAI_API_KEY' in os.environ}")
     logger.info(f"  GOOGLE_API_KEY exists: {'GOOGLE_API_KEY' in os.environ}")
     logger.info(f"  ANTHROPIC_API_KEY exists: {'ANTHROPIC_API_KEY' in os.environ}")
+    logger.info(f"  DEEPSEEK_API_KEY (Novita AI) exists: {'DEEPSEEK_API_KEY' in os.environ}")
     
     if os.getenv("OPENAI_API_KEY"):
         logger.info(f"  OPENAI_API_KEY: {os.getenv('OPENAI_API_KEY')[:10]}...")
@@ -337,11 +397,17 @@ async def translate_text(
         logger.info(f"  ANTHROPIC_API_KEY: {os.getenv('ANTHROPIC_API_KEY')[:10]}...")
     else:
         logger.info("  ANTHROPIC_API_KEY: Not found")
+        
+    if os.getenv("DEEPSEEK_API_KEY"):
+        logger.info(f"  DEEPSEEK_API_KEY (Novita AI): {os.getenv('DEEPSEEK_API_KEY')[:10]}...")
+    else:
+        logger.info("  DEEPSEEK_API_KEY (Novita AI): Not found")
     
-    logger.info(f"Client initialization status:")
+    logger.info("Client initialization status:")
     logger.info(f"  openai_client: {openai_client is not None}")
     logger.info(f"  anthropic_client: {anthropic_client is not None}")
     logger.info(f"  google_configured: {google_configured}")
+    logger.info(f"  deepseek_client (Novita AI): {deepseek_client is not None}")
     
     if model == "multi":
         # Handle multi-model translation with random model selection
@@ -359,6 +425,8 @@ async def translate_text(
         return translate_multi_model(multi_request, db, current_user)
     
     # Validate model
+    print(model)
+    print(MODEL_PROVIDERS)
     if model not in MODEL_PROVIDERS:
         raise HTTPException(
             status_code=400, 
@@ -420,7 +488,7 @@ async def translate_text(
                 full_text += chunk
                 
                 # Check if this chunk is an error message
-                if chunk.startswith("OpenAI API Error:") or chunk.startswith("Anthropic API Error:") or chunk.startswith("Google API Error:") or chunk.startswith("Configuration Error:"):
+                if chunk.startswith("OpenAI API Error:") or chunk.startswith("Anthropic API Error:") or chunk.startswith("Google API Error:") or chunk.startswith("DeepSeek API Error:") or chunk.startswith("Configuration Error:"):
                     has_error = True
                     error_message = chunk
                     # Send error in structured format
@@ -549,7 +617,7 @@ def translate_multi_model(
                     full_text += chunk
                     
                     # Check if this chunk is an error message
-                    if chunk.startswith("OpenAI API Error:") or chunk.startswith("Anthropic API Error:") or chunk.startswith("Google API Error:") or chunk.startswith("Configuration Error:"):
+                    if chunk.startswith("OpenAI API Error:") or chunk.startswith("Anthropic API Error:") or chunk.startswith("Google API Error:") or chunk.startswith("DeepSeek API Error:") or chunk.startswith("Configuration Error:"):
                         has_error = True
                         error_message = chunk
                         # Send error in structured format
@@ -633,73 +701,95 @@ def translate_multi_model(
     return EventSourceResponse(generate_multi_stream())
 
 # 5-star rating vote endpoint  
-@router.post("/vote/{model_version_name}", response_model=VoteResponse)
-def vote_for_model(
-    model_version_name: str = Path(..., description="Name of the model version (e.g., gpt-4o-mini)"),
-    vote_request: VoteRequest = Body(..., description="Vote score (1-5 stars)"),
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+class ModelVoteRequest(BaseModel):
+    model_versions: List[str] = Field(..., description="List of model version names to vote for (e.g., ['gpt-4o-mini', 'claude-3-5-sonnet-20241022'])")
+    translation_output_id: Optional[int] = Field(None, description="Optional translation output ID to associate the vote with")
+
+class ModelVoteResponseEntry(BaseModel):
+    message: str
+    model_version: str
+    user_score: int
+    average_score: float
+    total_votes: int
+    score_percentage: float
+
+class ModelVoteResponse(BaseModel):
+    results: List[ModelVoteResponseEntry]
+
+@router.post("/vote", response_model=ModelVoteResponse)
+def vote_for_models(
+    vote_request: ModelVoteRequest = Body(..., description="Vote for one or more model versions (score is always 5)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Submit a 1-5 star rating for a model version.
+    Submit a 5-star rating for one or more model versions.
     Users can vote multiple times for the same model - each vote counts toward the total.
     """
-    try:
-        # Get or create model version
-        model_version = get_or_create_model_version(db, model_version_name)
-        
-        if model_version.id is None:
-            # Fallback for database schema issues
-            return VoteResponse(
-                message="Vote recorded (database schema incomplete)",
-                model_version=model_version_name,
-                user_score=vote_request.score,
-                average_score=float(vote_request.score),
-                total_votes=1,
-                score_percentage=float(vote_request.score * 20)  # Convert to percentage
+    results = []
+    for model_version_name in vote_request.model_versions:
+        try:
+            # Get or create model version
+            model_version = get_or_create_model_version(db, model_version_name)
+            
+            if model_version.id is None:
+                # Fallback for database schema issues
+                results.append(ModelVoteResponseEntry(
+                    message="Vote recorded (database schema incomplete)",
+                    model_version=model_version_name,
+                    user_score=5,
+                    average_score=5.0,
+                    total_votes=1,
+                    score_percentage=100.0
+                ))
+                continue
+
+            # Always create a new vote (allow multiple votes per user per model)
+            # translation_output_id is required if the column is NOT NULL
+            new_vote = Vote(
+                user_id=current_user.id,
+                model_version_id=model_version.id,
+                translation_output_id=vote_request.translation_output_id,
+                score=5
             )
-        
-        # Always create a new vote (allow multiple votes per user per model)
-        new_vote = Vote(
-            user_id=current_user.id,
-            model_version_id=model_version.id,
-            translation_output_id=None,  # Optional field for specific translation output
-            score=vote_request.score
-        )
-        db.add(new_vote)
-        db.commit()
-        db.refresh(new_vote)
-        
-        # Calculate updated statistics
-        from sqlalchemy import func
-        stats = db.query(
-            func.avg(Vote.score).label('avg_score'),
-            func.count(Vote.id).label('total_votes')
-        ).filter(Vote.model_version_id == model_version.id).first()
-        
-        average_score = float(stats.avg_score) if stats.avg_score else float(vote_request.score)
-        total_votes = int(stats.total_votes) if stats.total_votes else 1
-        score_percentage = (average_score / 5.0) * 100.0
-        
-        return VoteResponse(
-            message="Vote recorded successfully",
-            model_version=model_version.version,
-            user_score=vote_request.score,
-            average_score=round(average_score, 2),
-            total_votes=total_votes,
-            score_percentage=round(score_percentage, 1)
-        )
-        
-    except Exception as e:
-        # Fallback for any database issues
-        return VoteResponse(
-            message=f"Vote recorded with limitations: {str(e)[:100]}",
-            model_version=model_version_name,
-            user_score=vote_request.score,
-            average_score=float(vote_request.score),
-            total_votes=1,
-            score_percentage=float(vote_request.score * 20)
-        )
+            db.add(new_vote)
+            db.commit()
+            db.refresh(new_vote)
+            
+            # Calculate updated statistics
+            from sqlalchemy import func
+            stats = db.query(
+                func.avg(Vote.score).label('avg_score'),
+                func.count(Vote.id).label('total_votes')
+            ).filter(Vote.model_version_id == model_version.id).first()
+            
+            average_score = float(stats.avg_score) if stats.avg_score else 5.0
+            total_votes = int(stats.total_votes) if stats.total_votes else 1
+            score_percentage = (average_score / 5.0) * 100.0
+            
+            results.append(ModelVoteResponseEntry(
+                message="Vote recorded successfully",
+                model_version=model_version.version,
+                user_score=5,
+                average_score=round(average_score, 2),
+                total_votes=total_votes,
+                score_percentage=round(score_percentage, 1)
+            ))
+            
+        except Exception as e:
+            # Fallback for any database issues
+            results.append(ModelVoteResponseEntry(
+                message=f"Vote recorded with limitations: {str(e)[:100]}",
+                model_version=model_version_name,
+                user_score=5,
+                average_score=5.0,
+                total_votes=1,
+                score_percentage=100.0
+            ))
+    return ModelVoteResponse(results=results)
 
 # Leaderboard endpoint with 5-star rating percentages
 @router.get("/score", response_model=LeaderboardResponse)
@@ -824,10 +914,12 @@ def get_system_status():
         "openai_available": OPENAI_AVAILABLE and openai_client is not None,
         "anthropic_available": ANTHROPIC_AVAILABLE and anthropic_client is not None,
         "google_available": GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY") is not None,
+        "deepseek_available": OPENAI_AVAILABLE and deepseek_client is not None,
         "supported_models": list(MODEL_PROVIDERS.keys()),
         "mode": "production" if any([
             OPENAI_AVAILABLE and openai_client,
             ANTHROPIC_AVAILABLE and anthropic_client,
-            GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY")
+            GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY"),
+            OPENAI_AVAILABLE and deepseek_client
         ]) else "demo"
     }
