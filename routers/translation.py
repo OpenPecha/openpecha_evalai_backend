@@ -64,11 +64,9 @@ def get_model_providers():
     if model_providers_env:
         try:
             return json.loads(model_providers_env)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Invalid JSON in MODEL_PROVIDERS environment variable: {e}. Using default configuration.")
+        except json.JSONDecodeError:
             return default_providers
     else:
-        logger.info("MODEL_PROVIDERS environment variable not set. Using default configuration.")
         return default_providers
 
 MODEL_PROVIDERS = get_model_providers()
@@ -375,13 +373,6 @@ async def translate_text(
     Returns errors if AI clients are not configured.
     """
     
-    # Log credential status when endpoint is triggered
-    logger.info(f"Translation endpoint triggered for model: {model}")
-    logger.info("Credential status check:")
-    logger.info(f"  OPENAI_API_KEY exists: {'OPENAI_API_KEY' in os.environ}")
-    logger.info(f"  GOOGLE_API_KEY exists: {'GOOGLE_API_KEY' in os.environ}")
-    logger.info(f"  ANTHROPIC_API_KEY exists: {'ANTHROPIC_API_KEY' in os.environ}")
-    logger.info(f"  DEEPSEEK_API_KEY (Novita AI) exists: {'DEEPSEEK_API_KEY' in os.environ}")
     
     if os.getenv("OPENAI_API_KEY"):
         logger.info(f"  OPENAI_API_KEY: {os.getenv('OPENAI_API_KEY')[:10]}...")
@@ -403,11 +394,6 @@ async def translate_text(
     else:
         logger.info("  DEEPSEEK_API_KEY (Novita AI): Not found")
     
-    logger.info("Client initialization status:")
-    logger.info(f"  openai_client: {openai_client is not None}")
-    logger.info(f"  anthropic_client: {anthropic_client is not None}")
-    logger.info(f"  google_configured: {google_configured}")
-    logger.info(f"  deepseek_client (Novita AI): {deepseek_client is not None}")
     
     if model == "multi":
         # Handle multi-model translation with random model selection
@@ -425,8 +411,6 @@ async def translate_text(
         return translate_multi_model(multi_request, db, current_user)
     
     # Validate model
-    print(model)
-    print(MODEL_PROVIDERS)
     if model not in MODEL_PROVIDERS:
         raise HTTPException(
             status_code=400, 
@@ -462,7 +446,6 @@ async def translate_text(
         cached_output = find_cached_translation(db, request.text, model_version_id, request.prompt)
         
     if cached_output:
-        logger.info(f"Found cached translation for model {model}, returning cached result")
         
         # Return cached result as streaming response
         async def generate_cached_stream():
@@ -557,7 +540,6 @@ def translate_multi_model(
     db.commit()
     db.refresh(job)
     
-    logger.info(f"MULTI-MODEL: Created job {job.id} for models {request.models}")
     
     # Get or create model versions and check for cached translations
     model_versions = {}
@@ -582,7 +564,6 @@ def translate_multi_model(
             cached_output = find_cached_translation(db, request.text, model_version_id, request.prompt)
             if cached_output:
                 cached_outputs[model] = cached_output
-                logger.info(f"Found cached translation for model {model} in multi-model request")
     
     # Store job ID to avoid session issues
     job_id = job.id
@@ -646,7 +627,6 @@ def translate_multi_model(
                             async_db.commit()
                             async_db.refresh(output)
                             
-                            logger.info(f"MULTI-MODEL: Created TranslationOutput {output.id} for model {model} with job_id {job_id}")
                             
                             model_outputs[model] = output.id
                             completed_models.add(model)
@@ -715,7 +695,6 @@ async def translate_dual_models(
     This endpoint ensures both models use the same job ID for proper session tracking.
     """
     
-    logger.info(f"DUAL-STREAM: Request received for models: {request.models}")
     
     # Validate exactly 2 models
     if len(request.models) != 2:
@@ -732,7 +711,6 @@ async def translate_dual_models(
                 detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
             )
     
-    logger.info(f"DUAL-STREAM: Calling translate_multi_model for user {current_user.id}")
     return translate_multi_model(request, db, current_user)
 
 # Comparison voting endpoint  
@@ -808,13 +786,11 @@ def submit_comparison_vote(
     
     # Ensure both outputs are from the same translation job
     if output1.job_id != output2.job_id:
-        logger.error(f"VOTE ERROR: Different job IDs - Output1 {output1.id} has job_id {output1.job_id}, Output2 {output2.id} has job_id {output2.job_id}")
         raise HTTPException(
             status_code=400,
             detail="Translation outputs must be from the same translation job for valid comparison"
         )
     
-    logger.info(f"VOTE SUCCESS: Both outputs have same job_id {output1.job_id}")
     
     # Normalize UUID ordering for consistent storage (A < B lexicographically)
     if output1_uuid < output2_uuid:
@@ -1044,6 +1020,90 @@ def get_model_leaderboard(db: Session = Depends(get_db)):
             "total_models_with_data": 0,
             "leaderboard": [],
             "error": f"Could not retrieve leaderboard: {str(e)}"
+        }
+
+@router.get("/score")
+def get_translation_scores(db: Session = Depends(get_db)):
+    """
+    Get translation model scores in star rating format for frontend compatibility.
+    Converts comparison voting results to 1-5 star ratings based on win rates.
+    """
+    try:
+        from sqlalchemy import func, text
+        
+        # Query to get model-level statistics using the improved schema
+        model_stats = db.execute(text("""
+            SELECT 
+                mv.id as model_version_id,
+                mv.version as model_version,
+                mv.provider,
+                COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) as total_wins,
+                COUNT(v.id) as total_comparisons,
+                ROUND(
+                    COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) * 100.0 / 
+                    NULLIF(COUNT(v.id), 0), 2
+                ) as win_rate_percentage,
+                COUNT(CASE WHEN v.is_tie = 1 THEN 1 END) as ties_involved
+            FROM model_version mv
+            JOIN translation_output to ON mv.id = to.model_version_id
+            LEFT JOIN vote v ON (v.translation_output_a_id = to.id OR v.translation_output_b_id = to.id)
+            GROUP BY mv.id, mv.version, mv.provider
+            HAVING COUNT(v.id) > 0
+            ORDER BY win_rate_percentage DESC, total_wins DESC
+        """)).fetchall()
+        
+        leaderboard = []
+        for stat in model_stats:
+            # Convert win rate to 1-5 star scale
+            win_rate = float(stat.win_rate_percentage) if stat.win_rate_percentage else 0.0
+            
+            # Map win rate to star rating (1.0 to 5.0)
+            # 0-20% win rate = 1-2 stars, 20-40% = 2-3 stars, etc.
+            if win_rate >= 80:
+                average_score = 4.5 + (win_rate - 80) / 20 * 0.5  # 4.5-5.0 stars
+            elif win_rate >= 60:
+                average_score = 3.5 + (win_rate - 60) / 20 * 1.0  # 3.5-4.5 stars
+            elif win_rate >= 40:
+                average_score = 2.5 + (win_rate - 40) / 20 * 1.0  # 2.5-3.5 stars
+            elif win_rate >= 20:
+                average_score = 1.5 + (win_rate - 20) / 20 * 1.0  # 1.5-2.5 stars
+            else:
+                average_score = 1.0 + win_rate / 20 * 0.5  # 1.0-1.5 stars
+            
+            # Create fake score breakdown based on the average score
+            primary_star = int(average_score)
+            remainder = average_score - primary_star
+            
+            score_breakdown = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+            total_votes = stat.total_comparisons
+            
+            if total_votes > 0:
+                # Distribute votes across stars based on the calculated average
+                if remainder > 0.5 and primary_star < 5:
+                    score_breakdown[str(primary_star + 1)] = int(total_votes * remainder)
+                    score_breakdown[str(primary_star)] = total_votes - score_breakdown[str(primary_star + 1)]
+                else:
+                    score_breakdown[str(primary_star)] = int(total_votes * (1 - remainder))
+                    if primary_star > 1:
+                        score_breakdown[str(primary_star - 1)] = total_votes - score_breakdown[str(primary_star)]
+            
+            leaderboard.append({
+                "model_version": stat.model_version,
+                "provider": stat.provider,
+                "total_votes": total_votes,
+                "average_score": round(average_score, 1),
+                "score_percentage": round(average_score * 20, 1),  # Convert to percentage (5 stars = 100%)
+                "score_breakdown": score_breakdown
+            })
+        
+        return {
+            "leaderboard": leaderboard
+        }
+        
+    except Exception as e:
+        return {
+            "leaderboard": [],
+            "error": f"Could not retrieve scores: {str(e)}"
         }
 
 @router.get("/suggest_model", response_model=ModelSuggestionResponse)
