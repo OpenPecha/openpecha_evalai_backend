@@ -727,56 +727,78 @@ def vote_for_models(
 ):
     """
     Submit a 5-star rating for one or more model versions.
-    Users can vote multiple times for the same model - each vote counts toward the total.
+    Each user can only vote once per translation output.
     
     Note: translation_output_id is required and must be a valid UUID of an existing translation output.
     """
+    # Validate translation_output_id format first
+    try:
+        from uuid import UUID
+        output_uuid = UUID(vote_request.translation_output_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid translation_output_id format: {vote_request.translation_output_id}. Must be a valid UUID."
+        )
+    
+    # Validate that translation_output_id exists in database
+    existing_output = db.query(TranslationOutput).filter(TranslationOutput.id == output_uuid).first()
+    if not existing_output:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Translation output with ID {vote_request.translation_output_id} not found."
+        )
+    
+    # Check if user has already voted for this translation output
+    existing_vote = db.query(Vote).filter(
+        Vote.user_id == current_user.id,
+        Vote.translation_output_id == output_uuid
+    ).first()
+    if existing_vote:
+        raise HTTPException(
+            status_code=409,  # Conflict
+            detail=f"User has already voted for translation output {vote_request.translation_output_id}. Only one vote per translation output is allowed."
+        )
+    
     results = []
     for model_version_name in vote_request.model_versions:
-        try:
-            # Get or create model version
-            model_version = get_or_create_model_version(db, model_version_name)
-            
-            if model_version.id is None:
-                # Fallback for database schema issues
-                results.append(ModelVoteResponseEntry(
-                    message="Vote recorded (database schema incomplete)",
-                    model_version=model_version_name,
-                    user_score=5,
-                    average_score=5.0,
-                    total_votes=1,
-                    score_percentage=100.0
-                ))
-                continue
-
-            # Always create a new vote (allow multiple votes per user per model)
-            # translation_output_id is now required (NOT NULL)
-            try:
-                # Convert string UUID to UUID object for database storage
-                from uuid import UUID
-                output_uuid = UUID(vote_request.translation_output_id)
-            except ValueError:
-                results.append(ModelVoteResponseEntry(
-                    message=f"Invalid translation_output_id format: {vote_request.translation_output_id}",
-                    model_version=model_version_name,
-                    user_score=5,
-                    average_score=0.0,
-                    total_votes=0,
-                    score_percentage=0.0
-                ))
-                continue
-            
-            new_vote = Vote(
-                user_id=current_user.id,
-                model_version_id=model_version.id,
-                translation_output_id=output_uuid,
-                score=5
+        # Get or create model version
+        model_version = get_or_create_model_version(db, model_version_name)
+        
+        if model_version.id is None:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database schema error: Unable to create or retrieve model version '{model_version_name}'"
             )
+
+        # Create new vote (allow multiple votes per user per model)
+        new_vote = Vote(
+            user_id=current_user.id,
+            model_version_id=model_version.id,
+            translation_output_id=output_uuid,
+            score=5
+        )
+        
+        try:
             db.add(new_vote)
             db.commit()
             db.refresh(new_vote)
-            
-            # Calculate updated statistics
+        except Exception as e:
+            db.rollback()
+            # Check if this is a unique constraint violation for duplicate vote
+            if "unique_user_translation_vote" in str(e).lower():
+                raise HTTPException(
+                    status_code=409,
+                    detail="User has already voted for this translation output. Only one vote per translation output is allowed."
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Database error while recording vote for model '{model_version_name}': {str(e)}"
+                )
+        
+        # Calculate updated statistics
+        try:
             from sqlalchemy import func
             stats = db.query(
                 func.avg(Vote.score).label('avg_score'),
@@ -795,17 +817,14 @@ def vote_for_models(
                 total_votes=total_votes,
                 score_percentage=round(score_percentage, 1)
             ))
-            
         except Exception as e:
-            # Fallback for any database issues
-            results.append(ModelVoteResponseEntry(
-                message=f"Vote recorded with limitations: {str(e)[:100]}",
-                model_version=model_version_name,
-                user_score=5,
-                average_score=5.0,
-                total_votes=1,
-                score_percentage=100.0
-            ))
+            # If stats calculation fails, still consider the vote successful
+            # but throw error to be consistent with user's request
+            raise HTTPException(
+                status_code=500,
+                detail=f"Vote recorded but statistics calculation failed for model '{model_version_name}': {str(e)}"
+            )
+            
     return ModelVoteResponse(results=results)
 
 # Leaderboard endpoint with 5-star rating percentages

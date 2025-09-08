@@ -70,7 +70,7 @@ class Vote(Base):
     # Constraints
     __table_args__ = (
         CheckConstraint('score >= 1 AND score <= 5', name='valid_score_range'),
-        UniqueConstraint('user_id', 'model_version_id', name='unique_user_model_vote'),
+        UniqueConstraint('user_id', 'translation_output_id', name='unique_user_translation_vote'),
     )
     
     # Relationships
