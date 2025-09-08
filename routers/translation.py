@@ -557,6 +557,8 @@ def translate_multi_model(
     db.commit()
     db.refresh(job)
     
+    logger.info(f"MULTI-MODEL: Created job {job.id} for models {request.models}")
+    
     # Get or create model versions and check for cached translations
     model_versions = {}
     model_version_ids = {}
@@ -644,6 +646,8 @@ def translate_multi_model(
                             async_db.commit()
                             async_db.refresh(output)
                             
+                            logger.info(f"MULTI-MODEL: Created TranslationOutput {output.id} for model {model} with job_id {job_id}")
+                            
                             model_outputs[model] = output.id
                             completed_models.add(model)
                             
@@ -711,6 +715,8 @@ async def translate_dual_models(
     This endpoint ensures both models use the same job ID for proper session tracking.
     """
     
+    logger.info(f"DUAL-STREAM: Request received for models: {request.models}")
+    
     # Validate exactly 2 models
     if len(request.models) != 2:
         raise HTTPException(
@@ -726,6 +732,7 @@ async def translate_dual_models(
                 detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
             )
     
+    logger.info(f"DUAL-STREAM: Calling translate_multi_model for user {current_user.id}")
     return translate_multi_model(request, db, current_user)
 
 # Comparison voting endpoint  
@@ -801,10 +808,13 @@ def submit_comparison_vote(
     
     # Ensure both outputs are from the same translation job
     if output1.job_id != output2.job_id:
+        logger.error(f"VOTE ERROR: Different job IDs - Output1 {output1.id} has job_id {output1.job_id}, Output2 {output2.id} has job_id {output2.job_id}")
         raise HTTPException(
             status_code=400,
             detail="Translation outputs must be from the same translation job for valid comparison"
         )
+    
+    logger.info(f"VOTE SUCCESS: Both outputs have same job_id {output1.job_id}")
     
     # Normalize UUID ordering for consistent storage (A < B lexicographically)
     if output1_uuid < output2_uuid:
