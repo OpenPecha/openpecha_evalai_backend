@@ -62,9 +62,10 @@ class Vote(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     user_id = Column(String, nullable=False)  # User who voted
     model_version_id = Column(UUID(as_uuid=True), ForeignKey("model_version.id"), nullable=False)
-    translation_output_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=True)  # Optional reference to specific output
+    translation_output_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=False)  # Required reference to specific output
     score = Column(Integer, nullable=False)  # Rating from 1-5
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     # Constraints
     __table_args__ = (

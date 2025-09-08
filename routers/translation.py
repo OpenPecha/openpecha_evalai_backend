@@ -702,11 +702,11 @@ def translate_multi_model(
 
 # 5-star rating vote endpoint  
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
 
 class ModelVoteRequest(BaseModel):
     model_versions: List[str] = Field(..., description="List of model version names to vote for (e.g., ['gpt-4o-mini', 'claude-3-5-sonnet-20241022'])")
-    translation_output_id: Optional[int] = Field(None, description="Optional translation output ID to associate the vote with")
+    translation_output_id: str = Field(..., description="Required translation output ID to associate the vote with")
 
 class ModelVoteResponseEntry(BaseModel):
     message: str
@@ -728,6 +728,8 @@ def vote_for_models(
     """
     Submit a 5-star rating for one or more model versions.
     Users can vote multiple times for the same model - each vote counts toward the total.
+    
+    Note: translation_output_id is required and must be a valid UUID of an existing translation output.
     """
     results = []
     for model_version_name in vote_request.model_versions:
@@ -748,11 +750,26 @@ def vote_for_models(
                 continue
 
             # Always create a new vote (allow multiple votes per user per model)
-            # translation_output_id is required if the column is NOT NULL
+            # translation_output_id is now required (NOT NULL)
+            try:
+                # Convert string UUID to UUID object for database storage
+                from uuid import UUID
+                output_uuid = UUID(vote_request.translation_output_id)
+            except ValueError:
+                results.append(ModelVoteResponseEntry(
+                    message=f"Invalid translation_output_id format: {vote_request.translation_output_id}",
+                    model_version=model_version_name,
+                    user_score=5,
+                    average_score=0.0,
+                    total_votes=0,
+                    score_percentage=0.0
+                ))
+                continue
+            
             new_vote = Vote(
                 user_id=current_user.id,
                 model_version_id=model_version.id,
-                translation_output_id=vote_request.translation_output_id,
+                translation_output_id=output_uuid,
                 score=5
             )
             db.add(new_vote)
