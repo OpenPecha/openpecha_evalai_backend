@@ -705,7 +705,7 @@ from pydantic import BaseModel, Field
 from typing import List
 
 class ModelVoteRequest(BaseModel):
-    model_versions: List[str] = Field(..., description="List of model version names to vote for (e.g., ['gpt-4o-mini', 'claude-3-5-sonnet-20241022'])")
+    model_versions: List[str] = Field(..., min_items=1, description="List of model version names to vote for (e.g., ['gpt-4o-mini', 'claude-3-5-sonnet-20241022']). Cannot be empty.")
     translation_output_id: str = Field(..., description="Required translation output ID to associate the vote with")
 
 class ModelVoteResponseEntry(BaseModel):
@@ -731,6 +731,13 @@ def vote_for_models(
     
     Note: translation_output_id is required and must be a valid UUID of an existing translation output.
     """
+    # Validate that model_versions is not empty
+    if not vote_request.model_versions or len(vote_request.model_versions) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="model_versions cannot be empty. At least one model version must be specified for voting."
+        )
+    
     # Validate translation_output_id format first
     try:
         from uuid import UUID
