@@ -700,6 +700,34 @@ def translate_multi_model(
     
     return EventSourceResponse(generate_multi_stream())
 
+@router.post("/dual-stream")
+async def translate_dual_models(
+    request: MultiTranslationRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Translate text using exactly two specified models with streaming response.
+    This endpoint ensures both models use the same job ID for proper session tracking.
+    """
+    
+    # Validate exactly 2 models
+    if len(request.models) != 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Exactly 2 models must be specified for dual comparison"
+        )
+    
+    # Validate models exist
+    for model in request.models:
+        if model not in MODEL_PROVIDERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
+            )
+    
+    return translate_multi_model(request, db, current_user)
+
 # Comparison voting endpoint  
 from pydantic import BaseModel, Field
 from typing import List, Optional
