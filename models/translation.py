@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer, CheckConstraint, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -19,7 +19,6 @@ class ModelVersion(Base):
     
     # Relationships
     outputs = relationship("TranslationOutput", back_populates="model_version")
-    votes = relationship("Vote", back_populates="model_version")
 
 class TranslationJob(Base):
     """
@@ -35,6 +34,7 @@ class TranslationJob(Base):
     
     # Relationships
     outputs = relationship("TranslationOutput", back_populates="job")
+    votes = relationship("Vote", back_populates="translation_job")
 
 class TranslationOutput(Base):
     """
@@ -51,28 +51,46 @@ class TranslationOutput(Base):
     # Relationships
     job = relationship("TranslationJob", back_populates="outputs")
     model_version = relationship("ModelVersion", back_populates="outputs")
-    votes = relationship("Vote", back_populates="translation_output")
 
 class Vote(Base):
     """
-    Represents a user's rating (1-5 stars) for a specific model version and translation output
+    Represents a user's preference vote when comparing two translation outputs.
+    Optimized for efficient leaderboard queries and analytics.
     """
     __tablename__ = "vote"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     user_id = Column(String, nullable=False)  # User who voted
-    model_version_id = Column(UUID(as_uuid=True), ForeignKey("model_version.id"), nullable=False)
-    translation_output_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=False)  # Required reference to specific output
-    score = Column(Integer, nullable=False)  # Rating from 1-5
+    translation_job_id = Column(UUID(as_uuid=True), ForeignKey("translation_job.id"), nullable=False)  # Context: which job/prompt this comparison is for
+    
+    # Normalized comparison pair: always store smaller UUID first to prevent duplicates
+    translation_output_a_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=False)  # Smaller UUID (lexicographically)
+    translation_output_b_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=False)  # Larger UUID (lexicographically)
+    
+    # Simplified preference tracking
+    winner_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=True)  # NULL if tie/no preference
+    is_tie = Column(Integer, nullable=False, default=0)  # 0=clear winner, 1=tie/both selected, 2=neither selected
+    
+    # Analytics metadata
+    response_time_ms = Column(Integer, nullable=True)  # Time taken to make decision (milliseconds)
+    
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     # Constraints
     __table_args__ = (
-        CheckConstraint('score >= 1 AND score <= 5', name='valid_score_range'),
-        UniqueConstraint('user_id', 'translation_output_id', name='unique_user_translation_vote'),
+        # Ensure user can only vote once per normalized comparison pair
+        UniqueConstraint('user_id', 'translation_output_a_id', 'translation_output_b_id', name='unique_user_normalized_comparison'),
+        # Ensure translation outputs are different
+        CheckConstraint('translation_output_a_id != translation_output_b_id', name='different_translation_outputs'),
+        # Ensure proper UUID ordering (A < B lexicographically)
+        CheckConstraint('translation_output_a_id < translation_output_b_id', name='normalized_uuid_order'),
+        # Ensure winner is one of the compared outputs (if not tie)
+        CheckConstraint('winner_id IS NULL OR winner_id = translation_output_a_id OR winner_id = translation_output_b_id', name='valid_winner'),
     )
     
     # Relationships
-    model_version = relationship("ModelVersion", back_populates="votes")
-    translation_output = relationship("TranslationOutput")
+    translation_job = relationship("TranslationJob", foreign_keys=[translation_job_id])
+    translation_output_a = relationship("TranslationOutput", foreign_keys=[translation_output_a_id])
+    translation_output_b = relationship("TranslationOutput", foreign_keys=[translation_output_b_id])
+    winner = relationship("TranslationOutput", foreign_keys=[winner_id])

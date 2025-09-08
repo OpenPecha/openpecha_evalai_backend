@@ -10,8 +10,8 @@ from models.translation import ModelVersion, TranslationJob, TranslationOutput, 
 from schemas.translation import (
     TranslationRequest, MultiTranslationRequest,
     LeaderboardResponse, LeaderboardEntry, ModelVersionRead,
-    TranslationJobRead, TranslationOutputRead, ModelSuggestionResponse,
-    VoteRequest, VoteResponse
+    TranslationJobRead, TranslationOutputRead, ModelSuggestionResponse
+    # VoteRequest, VoteResponse  # No longer used - replaced with comparison voting
 )
 import uuid
 import json
@@ -700,214 +700,313 @@ def translate_multi_model(
     
     return EventSourceResponse(generate_multi_stream())
 
-# 5-star rating vote endpoint  
+# Comparison voting endpoint  
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
-class ModelVoteRequest(BaseModel):
-    model_versions: List[str] = Field(..., min_items=1, description="List of model version names to vote for (e.g., ['gpt-4o-mini', 'claude-3-5-sonnet-20241022']). Cannot be empty.")
-    translation_output_id: str = Field(..., description="Required translation output ID to associate the vote with")
+class ComparisonVoteRequest(BaseModel):
+    translation_output1_id: str = Field(..., description="First translation output ID for comparison")
+    translation_output2_id: str = Field(..., description="Second translation output ID for comparison")
+    winner_choice: str = Field(..., description="Winner choice: 'output1', 'output2', 'tie', or 'neither'")
+    response_time_ms: Optional[int] = Field(None, description="Time taken to make decision in milliseconds")
 
-class ModelVoteResponseEntry(BaseModel):
+class ComparisonVoteResponse(BaseModel):
     message: str
-    model_version: str
-    user_score: int
-    average_score: float
-    total_votes: int
-    score_percentage: float
+    vote_id: str
+    translation_output_a_id: str
+    translation_output_b_id: str
+    winner_id: Optional[str]
+    is_tie: int
+    translation_job_id: str
 
-class ModelVoteResponse(BaseModel):
-    results: List[ModelVoteResponseEntry]
-
-@router.post("/vote", response_model=ModelVoteResponse)
-def vote_for_models(
-    vote_request: ModelVoteRequest = Body(..., description="Vote for one or more model versions (score is always 5)"),
+@router.post("/vote", response_model=ComparisonVoteResponse)
+def submit_comparison_vote(
+    vote_request: ComparisonVoteRequest = Body(..., description="Submit a comparison vote between two translation outputs"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Submit a 5-star rating for one or more model versions.
-    Each user can only vote once per translation output.
-    
-    Note: translation_output_id is required and must be a valid UUID of an existing translation output.
+    Submit a comparison vote between two translation outputs using the improved analytics schema.
+    Users compare two translations and select a winner, tie, or neither.
+    Each user can only vote once per normalized comparison pair.
     """
-    # Validate that model_versions is not empty
-    if not vote_request.model_versions or len(vote_request.model_versions) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="model_versions cannot be empty. At least one model version must be specified for voting."
-        )
-    
-    # Validate translation_output_id format first
+    # Validate UUID formats
     try:
         from uuid import UUID
-        output_uuid = UUID(vote_request.translation_output_id)
-    except ValueError:
+        output1_uuid = UUID(vote_request.translation_output1_id)
+        output2_uuid = UUID(vote_request.translation_output2_id)
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid translation_output_id format: {vote_request.translation_output_id}. Must be a valid UUID."
+            detail=f"Invalid UUID format: {str(e)}"
         )
     
-    # Validate that translation_output_id exists in database
-    existing_output = db.query(TranslationOutput).filter(TranslationOutput.id == output_uuid).first()
-    if not existing_output:
+    # Ensure the two translation outputs are different
+    if output1_uuid == output2_uuid:
+        raise HTTPException(
+            status_code=400,
+            detail="translation_output1_id and translation_output2_id must be different"
+        )
+    
+    # Validate winner_choice
+    valid_choices = ["output1", "output2", "tie", "neither"]
+    if vote_request.winner_choice not in valid_choices:
+        raise HTTPException(
+            status_code=400,
+            detail=f"winner_choice must be one of: {valid_choices}"
+        )
+    
+    # Validate that both translation outputs exist and get their job context
+    output1 = db.query(TranslationOutput).filter(TranslationOutput.id == output1_uuid).first()
+    output2 = db.query(TranslationOutput).filter(TranslationOutput.id == output2_uuid).first()
+    
+    if not output1:
         raise HTTPException(
             status_code=404,
-            detail=f"Translation output with ID {vote_request.translation_output_id} not found."
+            detail=f"Translation output with ID {vote_request.translation_output1_id} not found"
+        )
+    if not output2:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Translation output with ID {vote_request.translation_output2_id} not found"
         )
     
-    # Check if user has already voted for this translation output
+    # Ensure both outputs are from the same translation job
+    if output1.job_id != output2.job_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Translation outputs must be from the same translation job for valid comparison"
+        )
+    
+    # Normalize UUID ordering for consistent storage (A < B lexicographically)
+    if output1_uuid < output2_uuid:
+        output_a_uuid, output_b_uuid = output1_uuid, output2_uuid
+        winner_mapping = {"output1": output1_uuid, "output2": output2_uuid}
+    else:
+        output_a_uuid, output_b_uuid = output2_uuid, output1_uuid  
+        winner_mapping = {"output1": output1_uuid, "output2": output2_uuid}
+    
+    # Determine winner and tie status
+    winner_id = None
+    is_tie = 0  # Default: clear winner
+    
+    if vote_request.winner_choice == "output1":
+        winner_id = winner_mapping["output1"]
+        is_tie = 0
+    elif vote_request.winner_choice == "output2":
+        winner_id = winner_mapping["output2"] 
+        is_tie = 0
+    elif vote_request.winner_choice == "tie":
+        winner_id = None
+        is_tie = 1
+    elif vote_request.winner_choice == "neither":
+        winner_id = None
+        is_tie = 2
+    
+    # Check if user has already voted for this normalized comparison pair
     existing_vote = db.query(Vote).filter(
         Vote.user_id == current_user.id,
-        Vote.translation_output_id == output_uuid
+        Vote.translation_output_a_id == output_a_uuid,
+        Vote.translation_output_b_id == output_b_uuid
     ).first()
+    
     if existing_vote:
         raise HTTPException(
-            status_code=409,  # Conflict
-            detail=f"User has already voted for translation output {vote_request.translation_output_id}. Only one vote per translation output is allowed."
+            status_code=409,
+            detail="User has already voted for this comparison. Only one vote per comparison pair is allowed."
         )
     
-    results = []
-    for model_version_name in vote_request.model_versions:
-        # Get or create model version
-        model_version = get_or_create_model_version(db, model_version_name)
-        
-        if model_version.id is None:
+    # Create new comparison vote with improved schema
+    new_vote = Vote(
+        user_id=current_user.id,
+        translation_job_id=output1.job_id,  # Same for both outputs (validated above)
+        translation_output_a_id=output_a_uuid,
+        translation_output_b_id=output_b_uuid,
+        winner_id=winner_id,
+        is_tie=is_tie,
+        response_time_ms=vote_request.response_time_ms
+    )
+    
+    try:
+        db.add(new_vote)
+        db.commit()
+        db.refresh(new_vote)
+    except Exception as e:
+        db.rollback()
+        if "unique_user_normalized_comparison" in str(e).lower():
+            raise HTTPException(
+                status_code=409,
+                detail="User has already voted for this comparison."
+            )
+        else:
             raise HTTPException(
                 status_code=500,
-                detail=f"Database schema error: Unable to create or retrieve model version '{model_version_name}'"
+                detail=f"Database error while recording vote: {str(e)}"
             )
+    
+    return ComparisonVoteResponse(
+        message="Comparison vote recorded successfully",
+        vote_id=str(new_vote.id),
+        translation_output_a_id=str(output_a_uuid),
+        translation_output_b_id=str(output_b_uuid),
+        winner_id=str(winner_id) if winner_id else None,
+        is_tie=is_tie,
+        translation_job_id=str(output1.job_id)
+    )
 
-        # Create new vote (allow multiple votes per user per model)
-        new_vote = Vote(
-            user_id=current_user.id,
-            model_version_id=model_version.id,
-            translation_output_id=output_uuid,
-            score=5
-        )
-        
-        try:
-            db.add(new_vote)
-            db.commit()
-            db.refresh(new_vote)
-        except Exception as e:
-            db.rollback()
-            # Check if this is a unique constraint violation for duplicate vote
-            if "unique_user_translation_vote" in str(e).lower():
-                raise HTTPException(
-                    status_code=409,
-                    detail="User has already voted for this translation output. Only one vote per translation output is allowed."
-                )
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Database error while recording vote for model '{model_version_name}': {str(e)}"
-                )
-        
-        # Calculate updated statistics
-        try:
-            from sqlalchemy import func
-            stats = db.query(
-                func.avg(Vote.score).label('avg_score'),
-                func.count(Vote.id).label('total_votes')
-            ).filter(Vote.model_version_id == model_version.id).first()
-            
-            average_score = float(stats.avg_score) if stats.avg_score else 5.0
-            total_votes = int(stats.total_votes) if stats.total_votes else 1
-            score_percentage = (average_score / 5.0) * 100.0
-            
-            results.append(ModelVoteResponseEntry(
-                message="Vote recorded successfully",
-                model_version=model_version.version,
-                user_score=5,
-                average_score=round(average_score, 2),
-                total_votes=total_votes,
-                score_percentage=round(score_percentage, 1)
-            ))
-        except Exception as e:
-            # If stats calculation fails, still consider the vote successful
-            # but throw error to be consistent with user's request
-            raise HTTPException(
-                status_code=500,
-                detail=f"Vote recorded but statistics calculation failed for model '{model_version_name}': {str(e)}"
-            )
-            
-    return ModelVoteResponse(results=results)
-
-# Leaderboard endpoint with 5-star rating percentages
-@router.get("/score", response_model=LeaderboardResponse)
-def get_leaderboard(db: Session = Depends(get_db)):
+# Statistics endpoint for improved comparison voting
+@router.get("/vote-stats")
+def get_vote_statistics(db: Session = Depends(get_db)):
     """
-    Get leaderboard showing model performance with 5-star ratings and percentages
+    Get voting statistics for the improved comparison voting system.
+    Shows win rates, tie rates, and model performance analytics.
     """
     try:
-        # Get all model versions with their vote statistics
-        from sqlalchemy import func
+        from sqlalchemy import func, case
         
-        # Query to get average scores and vote counts for each model
-        stats_query = db.query(
-            ModelVersion.id,
-            ModelVersion.version,
-            ModelVersion.provider,
-            func.avg(Vote.score).label('avg_score'),
-            func.count(Vote.id).label('total_votes'),
-            func.count(case((Vote.score == 1, 1))).label('score_1'),
-            func.count(case((Vote.score == 2, 1))).label('score_2'),
-            func.count(case((Vote.score == 3, 1))).label('score_3'),
-            func.count(case((Vote.score == 4, 1))).label('score_4'),
-            func.count(case((Vote.score == 5, 1))).label('score_5')
-        ).outerjoin(Vote, ModelVersion.id == Vote.model_version_id) \
-         .group_by(ModelVersion.id, ModelVersion.version, ModelVersion.provider) \
-         .order_by(func.avg(Vote.score).desc().nullslast()) \
-         .all()
+        # Get win statistics for each translation output
+        win_stats = db.query(
+            Vote.winner_id.label('winner_id'),
+            func.count(Vote.id).label('wins')
+        ).filter(
+            Vote.is_tie == 0  # Only count clear wins
+        ).group_by(Vote.winner_id).all()
+        
+        # Get total comparisons each output was involved in
+        from sqlalchemy import text
+        involvement_stats = db.execute(text("""
+            SELECT 
+                output_id,
+                COUNT(*) as total_comparisons
+            FROM (
+                SELECT translation_output_a_id as output_id FROM vote
+                UNION ALL
+                SELECT translation_output_b_id as output_id FROM vote
+            ) as all_outputs
+            GROUP BY output_id
+        """)).fetchall()
+        
+        # Combine win and involvement data
+        stats_with_details = []
+        involvement_dict = {str(stat.output_id): stat.total_comparisons for stat in involvement_stats}
+        
+        for win_stat in win_stats:
+            if win_stat.winner_id:
+                output = db.query(TranslationOutput).filter(
+                    TranslationOutput.id == win_stat.winner_id
+                ).first()
+                
+                if output:
+                    model_version = db.query(ModelVersion).filter(
+                        ModelVersion.id == output.model_version_id
+                    ).first()
+                    
+                    total_comparisons = involvement_dict.get(str(win_stat.winner_id), 0)
+                    win_rate = (win_stat.wins / total_comparisons * 100) if total_comparisons > 0 else 0
+                    
+                    stats_with_details.append({
+                        "translation_output_id": str(win_stat.winner_id),
+                        "wins": win_stat.wins,
+                        "total_comparisons": total_comparisons,
+                        "win_rate_percentage": round(win_rate, 2),
+                        "model_version": model_version.version if model_version else "Unknown",
+                        "provider": model_version.provider if model_version else "Unknown"
+                    })
+        
+        # Sort by win rate descending
+        stats_with_details.sort(key=lambda x: x["win_rate_percentage"], reverse=True)
+        
+        # Get overall statistics
+        total_votes = db.query(Vote).count()
+        total_wins = db.query(Vote).filter(Vote.is_tie == 0).count()
+        total_ties = db.query(Vote).filter(Vote.is_tie == 1).count()
+        total_neither = db.query(Vote).filter(Vote.is_tie == 2).count()
+        
+        # Get average response time
+        avg_response_time = db.query(func.avg(Vote.response_time_ms)).filter(
+            Vote.response_time_ms.isnot(None)
+        ).scalar()
+        
+        return {
+            "total_votes": total_votes,
+            "total_clear_wins": total_wins,
+            "total_ties": total_ties,
+            "total_neither": total_neither,
+            "average_response_time_ms": round(avg_response_time, 2) if avg_response_time else None,
+            "translation_output_stats": stats_with_details
+        }
+        
+    except Exception as e:
+        return {
+            "total_votes": 0,
+            "total_clear_wins": 0,
+            "total_ties": 0,
+            "total_neither": 0,
+            "average_response_time_ms": None,
+            "translation_output_stats": [],
+            "error": f"Could not retrieve statistics: {str(e)}"
+        }
+
+@router.get("/leaderboard")
+def get_model_leaderboard(db: Session = Depends(get_db)):
+    """
+    Get model performance leaderboard based on comparison voting results.
+    Aggregates wins across all translation outputs for each model version.
+    """
+    try:
+        from sqlalchemy import func, text
+        
+        # Query to get model-level statistics using the improved schema
+        model_stats = db.execute(text("""
+            SELECT 
+                mv.id as model_version_id,
+                mv.version as model_version,
+                mv.provider,
+                COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) as total_wins,
+                COUNT(v.id) as total_comparisons,
+                ROUND(
+                    COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) * 100.0 / 
+                    NULLIF(COUNT(v.id), 0), 2
+                ) as win_rate_percentage,
+                COUNT(CASE WHEN v.is_tie = 1 THEN 1 END) as ties_involved,
+                AVG(CASE WHEN v.winner_id = to.id THEN v.response_time_ms END) as avg_winning_response_time
+            FROM model_version mv
+            JOIN translation_output to ON mv.id = to.model_version_id
+            LEFT JOIN vote v ON (v.translation_output_a_id = to.id OR v.translation_output_b_id = to.id)
+            GROUP BY mv.id, mv.version, mv.provider
+            HAVING COUNT(v.id) > 0
+            ORDER BY win_rate_percentage DESC, total_wins DESC
+        """)).fetchall()
         
         leaderboard = []
-        for stat in stats_query:
-            avg_score = float(stat.avg_score) if stat.avg_score else 0.0
-            total_votes = int(stat.total_votes) if stat.total_votes else 0
-            score_percentage = (avg_score / 5.0) * 100.0 if avg_score > 0 else 0.0
-            
-            # Create score breakdown
-            score_breakdown = {
-                1: int(stat.score_1) if stat.score_1 else 0,
-                2: int(stat.score_2) if stat.score_2 else 0,
-                3: int(stat.score_3) if stat.score_3 else 0,
-                4: int(stat.score_4) if stat.score_4 else 0,
-                5: int(stat.score_5) if stat.score_5 else 0
-            }
-            
-            leaderboard.append(LeaderboardEntry(
-                model_version=stat.version,
-                provider=stat.provider,
-                total_votes=total_votes,
-                average_score=round(avg_score, 2),
-                score_percentage=round(score_percentage, 1),
-                score_breakdown=score_breakdown
-            ))
+        for stat in model_stats:
+            leaderboard.append({
+                "model_version": stat.model_version,
+                "provider": stat.provider,
+                "total_wins": stat.total_wins,
+                "total_comparisons": stat.total_comparisons,
+                "win_rate_percentage": float(stat.win_rate_percentage) if stat.win_rate_percentage else 0.0,
+                "ties_involved": stat.ties_involved,
+                "average_winning_response_time_ms": round(float(stat.avg_winning_response_time), 2) if stat.avg_winning_response_time else None
+            })
         
-        return LeaderboardResponse(leaderboard=leaderboard)
+        # Get overall voting statistics
+        total_votes = db.query(Vote).count()
+        total_models_with_data = len(leaderboard)
         
-    except Exception:
-        # Fallback: try to get models without vote data
-        try:
-            model_versions = db.query(ModelVersion).all()
-            
-            leaderboard = []
-            for model_version in model_versions:
-                leaderboard.append(LeaderboardEntry(
-                    model_version=model_version.version,
-                    provider=model_version.provider,
-                    total_votes=0,
-                    average_score=0.0,
-                    score_percentage=0.0,
-                    score_breakdown={1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-                ))
-            
-            return LeaderboardResponse(leaderboard=leaderboard)
-            
-        except Exception:
-            # Ultimate fallback: empty leaderboard
-            return LeaderboardResponse(leaderboard=[])
+        return {
+            "total_votes": total_votes,
+            "total_models_with_data": total_models_with_data,
+            "leaderboard": leaderboard
+        }
+        
+    except Exception as e:
+        return {
+            "total_votes": 0,
+            "total_models_with_data": 0,
+            "leaderboard": [],
+            "error": f"Could not retrieve leaderboard: {str(e)}"
+        }
 
 @router.get("/suggest_model", response_model=ModelSuggestionResponse)
 def suggest_model_pair():
