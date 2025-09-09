@@ -421,6 +421,7 @@ async def translate_text(
     job = TranslationJob(
         source_text=request.text,
         prompt=request.prompt,
+        target_language=request.target_language,
         user_id=current_user.id
     )
     db.add(job)
@@ -534,6 +535,7 @@ def translate_multi_model(
     job = TranslationJob(
         source_text=request.text,
         prompt=request.prompt,
+        target_language=request.target_language,
         user_id=current_user.id
     )
     db.add(job)

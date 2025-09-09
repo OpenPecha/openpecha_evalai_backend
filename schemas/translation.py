@@ -26,6 +26,7 @@ class ModelVersionRead(ModelVersionBase):
 class TranslationJobBase(BaseModel):
     source_text: str = Field(..., description=TEXT_TO_TRANSLATE_DESC)
     prompt: Optional[str] = Field(None, description=OPTIONAL_PROMPT_DESC)
+    target_language: Optional[str] = Field(None, description="Target language for translation")
 
 class TranslationJobCreate(TranslationJobBase):
     pass
@@ -78,10 +79,12 @@ class VoteRead(VoteBase):
 class TranslationRequest(BaseModel):
     text: str = Field(..., description=TEXT_TO_TRANSLATE_DESC)
     prompt: Optional[str] = Field(None, description=OPTIONAL_PROMPT_DESC)
+    target_language: Optional[str] = Field(None, description="Target language for translation")
 
 class MultiTranslationRequest(BaseModel):
     text: str = Field(..., description=TEXT_TO_TRANSLATE_DESC)
     prompt: Optional[str] = Field(None, description=OPTIONAL_PROMPT_DESC)
+    target_language: Optional[str] = Field(None, description="Target language for translation")
     models: List[str] = Field(..., description="List of model versions to use", min_items=2, max_items=2)
 
 # Leaderboard schemas

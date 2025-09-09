@@ -29,6 +29,7 @@ class TranslationJob(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     source_text = Column(Text, nullable=False)
     prompt = Column(Text, nullable=True)  # Optional user prompt
+    target_language = Column(String, nullable=True)  # Optional target language
     user_id = Column(String, nullable=False)  # User who created the job
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     
