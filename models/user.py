@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, DateTime
+from sqlalchemy.orm import relationship
 from database import Base
 import datetime
 
@@ -14,3 +15,7 @@ class User(Base):
     role = Column(String, nullable=False, default='user')  # User role
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    
+    # Relationships
+    translation_jobs = relationship("TranslationJob", back_populates="user")
+    votes = relationship("Vote", back_populates="user")

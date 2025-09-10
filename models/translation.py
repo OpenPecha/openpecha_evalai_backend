@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer, Chec
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from database import Base
+from .user import User
 import datetime
 import uuid
 
@@ -31,10 +32,11 @@ class TranslationJob(Base):
     prompt = Column(Text, nullable=True)  # Optional user prompt
     template = Column(Text, nullable=True)  # Template used for translation
     target_language = Column(String, nullable=True)  # Optional target language
-    user_id = Column(String, nullable=False)  # User who created the job
+    user_id = Column(String, ForeignKey("user.id"), nullable=False)  # User who created the job
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     # Relationships
+    user = relationship("User", back_populates="translation_jobs")
     outputs = relationship("TranslationOutput", back_populates="job")
     votes = relationship("Vote", back_populates="translation_job")
 
@@ -62,7 +64,7 @@ class Vote(Base):
     __tablename__ = "vote"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    user_id = Column(String, nullable=False)  # User who voted
+    user_id = Column(String, ForeignKey("user.id"), nullable=False)  # User who voted
     translation_job_id = Column(UUID(as_uuid=True), ForeignKey("translation_job.id"), nullable=False)  # Context: which job/prompt this comparison is for
     
     # Normalized comparison pair: always store smaller UUID first to prevent duplicates
@@ -92,6 +94,7 @@ class Vote(Base):
     )
     
     # Relationships
+    user = relationship("User", back_populates="votes")
     translation_job = relationship("TranslationJob", foreign_keys=[translation_job_id])
     translation_output_a = relationship("TranslationOutput", foreign_keys=[translation_output_a_id])
     translation_output_b = relationship("TranslationOutput", foreign_keys=[translation_output_b_id])
