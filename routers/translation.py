@@ -726,6 +726,7 @@ class ComparisonVoteRequest(BaseModel):
     translation_output2_id: str = Field(..., description="Second translation output ID for comparison")
     winner_choice: str = Field(..., description="Winner choice: 'output1', 'output2', 'tie', or 'neither'")
     response_time_ms: Optional[int] = Field(None, description="Time taken to make decision in milliseconds")
+    comment: Optional[str] = Field(None, description="Optional user comment about the vote decision")
 
 class ComparisonVoteResponse(BaseModel):
     message: str
@@ -842,7 +843,8 @@ def submit_comparison_vote(
         translation_output_b_id=output_b_uuid,
         winner_id=winner_id,
         is_tie=is_tie,
-        response_time_ms=vote_request.response_time_ms
+        response_time_ms=vote_request.response_time_ms,
+        comment=vote_request.comment
     )
     
     try:
@@ -1025,6 +1027,70 @@ def get_model_leaderboard(db: Session = Depends(get_db)):
             "leaderboard": [],
             "error": f"Could not retrieve leaderboard: {str(e)}"
         }
+
+@router.get("/user-vote-leaderboard")
+def get_user_vote_leaderboard(db: Session = Depends(get_db)):
+    """
+    Get user vote leaderboard showing users ranked by their total vote count in descending order.
+    Returns users who have voted the most at the top.
+    """
+    try:
+        from sqlalchemy import func, text
+        
+        # Query to get user vote statistics
+        user_vote_stats = db.execute(text("""
+            SELECT 
+                u.id as user_id,
+                u.username,
+                u.first_name,
+                u.last_name,
+                u.email,
+                u.picture,
+                COUNT(v.id) as total_votes,
+                COUNT(CASE WHEN v.is_tie = 0 AND v.winner_id IS NOT NULL THEN 1 END) as decisive_votes,
+                COUNT(CASE WHEN v.is_tie = 1 THEN 1 END) as tie_votes,
+                COUNT(CASE WHEN v.is_tie = 2 THEN 1 END) as neither_votes,
+                AVG(v.response_time_ms) as avg_response_time_ms,
+                MIN(v.created_at) as first_vote_date,
+                MAX(v.created_at) as last_vote_date
+            FROM "user" u
+            JOIN vote v ON u.id = v.user_id
+            GROUP BY u.id, u.username, u.first_name, u.last_name, u.email, u.picture
+            HAVING COUNT(v.id) > 0
+            ORDER BY total_votes DESC, decisive_votes DESC
+        """)).fetchall()
+        
+        leaderboard = []
+        for i, stat in enumerate(user_vote_stats, 1):
+            leaderboard.append({
+                "rank": i,
+                "user_id": stat.user_id,
+                "username": stat.username,
+                "first_name": stat.first_name,
+                "last_name": stat.last_name,
+                "email": stat.email,
+                "picture": stat.picture,
+                "total_votes": stat.total_votes,
+                "decisive_votes": stat.decisive_votes,
+                "tie_votes": stat.tie_votes,
+                "neither_votes": stat.neither_votes,
+                "average_response_time_ms": round(float(stat.avg_response_time_ms), 2) if stat.avg_response_time_ms else None,
+                "first_vote_date": stat.first_vote_date.isoformat() if stat.first_vote_date else None,
+                "last_vote_date": stat.last_vote_date.isoformat() if stat.last_vote_date else None
+            })
+        
+        # Get overall statistics
+        total_users_with_votes = len(leaderboard)
+        total_votes_cast = sum(user["total_votes"] for user in leaderboard)
+        
+        return {
+            "total_users_with_votes": total_users_with_votes,
+            "total_votes_cast": total_votes_cast,
+            "leaderboard": leaderboard
+        }
+        
+    except Exception as e:
+      raise HTTPException(status_code=500, detail=f"Could not retrieve user vote leaderboard: {str(e)}")
 
 @router.get("/score")
 def get_translation_scores(db: Session = Depends(get_db)):

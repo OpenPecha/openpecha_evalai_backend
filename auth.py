@@ -137,8 +137,8 @@ def get_or_create_user_from_token(db: Session, token_payload: Dict[str, Any]) ->
         user = User(
             id=user_id,
             username=username,
-            firstName="",  # Default empty string for required field
-            lastName="",   # Default empty string for required field
+            first_name="",  # Default empty string for required field
+            last_name="",   # Default empty string for required field
             email=user_email,
             role='user',  # Default role
             picture=picture  # Store picture URL

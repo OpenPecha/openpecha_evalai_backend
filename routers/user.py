@@ -48,8 +48,8 @@ async def create_new_user(
         description="The user details for creating a new user.",
         example={
             "username": "john.doe",
-            "firstName": "John",
-            "lastName": "Doe",
+            "first_name": "John",
+            "last_name": "Doe",
             "email": "john.doe@example.com",
             "picture": "http://example.com/pic.jpg",
             "role": "user"

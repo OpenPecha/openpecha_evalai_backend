@@ -77,6 +77,7 @@ class Vote(Base):
     
     # Analytics metadata
     response_time_ms = Column(Integer, nullable=True)  # Time taken to make decision (milliseconds)
+    comment = Column(Text, nullable=True)  # Optional user comment about the vote decision
     
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))

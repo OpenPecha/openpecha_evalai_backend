@@ -8,8 +8,8 @@ class User(Base):
 
     id = Column(String, primary_key=True, nullable=False)  # Auth0 user ID as primary key
     username = Column(String, unique=True, index=True, nullable=False)  # Username derived from email
-    firstName = Column(String, nullable=False)
-    lastName = Column(String, nullable=False)
+    first_name = Column(String, nullable=True, default='')
+    last_name = Column(String, nullable=True, default='')
     email = Column(String, unique=True, index=True, nullable=False)
     picture = Column(String, nullable=True)
     role = Column(String, nullable=False, default='user')  # User role
