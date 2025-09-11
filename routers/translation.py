@@ -41,7 +41,7 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 try:
-    import google.generativeai as genai
+    from google import genai
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
@@ -51,7 +51,7 @@ router = APIRouter(prefix="/translate", tags=["Translation"])
 db_dependency = Depends(get_db)
 
 # Constants - System prompt from environment variable
-SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a translation engine. Output only the translated text.")
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT","Be a helpful assistant")
 
 # Model provider mapping - read from environment variable with fallback
 def get_model_providers():
@@ -85,7 +85,10 @@ if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 if GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    client = genai.Client(
+        api_key=os.environ.get("GEMINI_API_KEY"),
+    )
+    # genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
     google_configured = True
 
 # DeepSeek via Novita AI uses OpenAI-compatible API
@@ -253,28 +256,32 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
         
     try:
         # Initialize the model
-        google_model = genai.GenerativeModel(model)
-        
-        # Create the full prompt with system instruction
-        user_message = f"{SYSTEM_PROMPT}\n\n"
-        if prompt:
-            user_message += f"Translation instruction: {prompt}\n\nText to translate: {text}"
-        else:
-            user_message += f"Text to translate: {text}"
-        
-        # Generate content with streaming
-        response = google_model.generate_content(
-            user_message,
-            stream=True,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=2000,
-                temperature=0.1,  # Low temperature for consistent translations
-            )
-        )
-        
-        for chunk in response:
-            if chunk.text:
+        client = genai.Client(
+        api_key=os.environ.get("GEMINI_API_KEY"),
+    )
+     
+        content=[
+        genai.types.Content(
+            role="user",
+            parts=[
+                genai.types.Part.from_text(text=text),
+            ],
+        ),
+    ]
+        generate_content_config = genai.types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        thinking_config = genai.types.ThinkingConfig(
+            thinking_budget=-1,
+        ),
+    )
+           
+        for chunk in client.models.generate_content_stream(
+        model=model,
+        contents=content,
+        config=generate_content_config,):
                 yield chunk.text
+            
+       
     except Exception as e:
         # Return the actual API error instead of generic message
         yield f"Google API Error: {str(e)}"
@@ -349,8 +356,16 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
       
     elif provider == "google":
         if google_configured:
-            async for chunk in call_google_model(model, text, prompt):
-                yield chunk
+            try:
+                async for chunk in call_google_model(model, text, prompt):
+                    yield chunk
+            except Exception as e:
+                # Retry once if there is an error
+                try:
+                    async for chunk in call_google_model(model, text, prompt):
+                        yield chunk
+                except Exception as e2:
+                    yield f"Google API Error: {str(e2)}"
     
     elif provider == "deepseek-v3":
         if deepseek_client:
