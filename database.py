@@ -22,5 +22,15 @@ def get_db():
     finally:
         db.close()
 
+# Dependency to get Redis client
+def get_redis():
+    """Dependency to get Redis client for caching"""
+    try:
+        from redis_client import redis_client
+        return redis_client
+    except Exception as e:
+        print(f"Warning: Redis client not available: {e}")
+        return None
+
 def create_table():
     Base.metadata.create_all(bind=engine)

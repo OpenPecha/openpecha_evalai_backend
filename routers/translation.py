@@ -3,7 +3,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, case
 from typing import List, Dict, Any, Optional
-from database import get_db
+from datetime import datetime, timezone
+from database import get_db, get_redis
 from auth import get_current_active_user
 from models.user import User
 from models.translation import ModelVersion, TranslationJob, TranslationOutput, Vote
@@ -741,7 +742,8 @@ class ComparisonVoteResponse(BaseModel):
 def submit_comparison_vote(
     vote_request: ComparisonVoteRequest = Body(..., description="Submit a comparison vote between two translation outputs"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    redis_client = Depends(get_redis)
 ):
     """
     Submit a comparison vote between two translation outputs using the improved analytics schema.
@@ -864,6 +866,22 @@ def submit_comparison_vote(
                 detail=f"Database error while recording vote: {str(e)}"
             )
     
+    # Invalidate relevant caches when a new vote is submitted
+    if redis_client:
+        from redis_client import CacheKeys
+        # Clear arena scores cache (they depend on vote results)
+        redis_client.delete_cache(CacheKeys.arena_score())
+        # Clear leaderboard cache
+        redis_client.delete_cache(CacheKeys.leaderboard())
+        # Clear user vote leaderboard cache  
+        redis_client.delete_cache(CacheKeys.user_vote_leaderboard())
+        # Clear vote statistics cache
+        redis_client.delete_cache(CacheKeys.vote_stats())
+        # Clear model scores cache
+        redis_client.delete_cache(CacheKeys.model_scores())
+        # Clear model vote leaderboard cache
+        redis_client.delete_cache(CacheKeys.model_vote_leaderboard())
+    
     return ComparisonVoteResponse(
         message="Comparison vote recorded successfully",
         vote_id=str(new_vote.id),
@@ -874,13 +892,141 @@ def submit_comparison_vote(
         translation_job_id=str(output1.job_id)
     )
 
+# Constants for Redis cache management
+REDIS_UNAVAILABLE_MESSAGE = "Redis cache is not available"
+
+# Redis cache management endpoints
+@router.post("/cache/reset")
+def reset_redis_cache(
+    redis_client = Depends(get_redis),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Reset/clear all Redis cache entries. Requires authentication.
+    This will force fresh data to be loaded from the database for all cached endpoints.
+    """
+    if not redis_client:
+        raise HTTPException(
+            status_code=503, 
+            detail=REDIS_UNAVAILABLE_MESSAGE
+        )
+    
+    try:
+        # Clear all cache
+        success = redis_client.clear_all_cache()
+        
+        if success:
+            return {
+                "message": "Redis cache cleared successfully",
+                "status": "success",
+                "cleared_by": current_user.email,
+                "timestamp": str(datetime.now(timezone.utc))
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to clear Redis cache"
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error clearing Redis cache: {str(e)}"
+        )
+
+@router.get("/cache/info")
+def get_cache_info(
+    redis_client = Depends(get_redis),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get Redis cache information and statistics. Requires authentication.
+    """
+    if not redis_client:
+        raise HTTPException(
+            status_code=503, 
+            detail=REDIS_UNAVAILABLE_MESSAGE
+        )
+    
+    try:
+        cache_info = redis_client.get_cache_info()
+        return {
+            "cache_info": cache_info,
+            "requested_by": current_user.email,
+            "timestamp": str(datetime.now(timezone.utc))
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting cache info: {str(e)}"
+        )
+
+@router.delete("/cache/pattern/{pattern}")
+def clear_cache_pattern(
+    pattern: str,
+    redis_client = Depends(get_redis),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Clear cache entries matching a specific pattern. Requires authentication.
+    
+    Examples:
+    - arena:* - Clear all arena-related cache
+    - leaderboard:* - Clear all leaderboard cache  
+    - stats:* - Clear all statistics cache
+    """
+    if not redis_client:
+        raise HTTPException(
+            status_code=503, 
+            detail=REDIS_UNAVAILABLE_MESSAGE
+        )
+    
+    try:
+        # Validate pattern to prevent dangerous operations
+        allowed_patterns = ['arena:*', 'leaderboard:*', 'stats:*', 'scores:*']
+        if pattern not in allowed_patterns:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Pattern '{pattern}' not allowed. Allowed patterns: {allowed_patterns}"
+            )
+        
+        deleted_count = redis_client.clear_pattern_cache(pattern)
+        
+        return {
+            "message": f"Cleared {deleted_count} cache entries matching pattern '{pattern}'",
+            "pattern": pattern,
+            "deleted_count": deleted_count,
+            "cleared_by": current_user.email,
+            "timestamp": str(datetime.now(timezone.utc))
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error clearing cache pattern: {str(e)}"
+        )
+
 # Statistics endpoint for improved comparison voting
 @router.get("/vote-stats")
-def get_vote_statistics(db: Session = Depends(get_db)):
+def get_vote_statistics(
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis)
+):
     """
     Get voting statistics for the improved comparison voting system.
     Shows win rates, tie rates, and model performance analytics.
+    Cached in Redis for 1 day.
     """
+    # Try to get from cache first
+    if redis_client:
+        from redis_client import CacheKeys, CacheExpiry
+        cache_key = CacheKeys.vote_stats()
+        cached_result = redis_client.get_cache(cache_key)
+        if cached_result:
+            return cached_result
+    
     try:
         from sqlalchemy import func, case
         
@@ -947,7 +1093,7 @@ def get_vote_statistics(db: Session = Depends(get_db)):
             Vote.response_time_ms.isnot(None)
         ).scalar()
         
-        return {
+        result = {
             "total_votes": total_votes,
             "total_clear_wins": total_wins,
             "total_ties": total_ties,
@@ -955,6 +1101,12 @@ def get_vote_statistics(db: Session = Depends(get_db)):
             "average_response_time_ms": round(avg_response_time, 2) if avg_response_time else None,
             "translation_output_stats": stats_with_details
         }
+        
+        # Cache the result for vote statistics (1 day)
+        if redis_client:
+            redis_client.set_cache(cache_key, result, CacheExpiry.LEADERBOARD)
+        
+        return result
         
     except Exception as e:
         return {
@@ -967,73 +1119,24 @@ def get_vote_statistics(db: Session = Depends(get_db)):
             "error": f"Could not retrieve statistics: {str(e)}"
         }
 
-@router.get("/leaderboard")
-def get_model_leaderboard(db: Session = Depends(get_db)):
-    """
-    Get model performance leaderboard based on comparison voting results.
-    Aggregates wins across all translation outputs for each model version.
-    """
-    try:
-        from sqlalchemy import func, text
-        
-        # Query to get model-level statistics using the improved schema
-        model_stats = db.execute(text("""
-            SELECT 
-                mv.id as model_version_id,
-                mv.version as model_version,
-                mv.provider,
-                COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) as total_wins,
-                COUNT(v.id) as total_comparisons,
-                ROUND(
-                    COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) * 100.0 / 
-                    NULLIF(COUNT(v.id), 0), 2
-                ) as win_rate_percentage,
-                COUNT(CASE WHEN v.is_tie = 1 THEN 1 END) as ties_involved,
-                AVG(CASE WHEN v.winner_id = to.id THEN v.response_time_ms END) as avg_winning_response_time
-            FROM model_version mv
-            JOIN translation_output to ON mv.id = to.model_version_id
-            LEFT JOIN vote v ON (v.translation_output_a_id = to.id OR v.translation_output_b_id = to.id)
-            GROUP BY mv.id, mv.version, mv.provider
-            HAVING COUNT(v.id) > 0
-            ORDER BY win_rate_percentage DESC, total_wins DESC
-        """)).fetchall()
-        
-        leaderboard = []
-        for stat in model_stats:
-            leaderboard.append({
-                "model_version": stat.model_version,
-                "provider": stat.provider,
-                "total_wins": stat.total_wins,
-                "total_comparisons": stat.total_comparisons,
-                "win_rate_percentage": float(stat.win_rate_percentage) if stat.win_rate_percentage else 0.0,
-                "ties_involved": stat.ties_involved,
-                "average_winning_response_time_ms": round(float(stat.avg_winning_response_time), 2) if stat.avg_winning_response_time else None
-            })
-        
-        # Get overall voting statistics
-        total_votes = db.query(Vote).count()
-        total_models_with_data = len(leaderboard)
-        
-        return {
-            "total_votes": total_votes,
-            "total_models_with_data": total_models_with_data,
-            "leaderboard": leaderboard
-        }
-        
-    except Exception as e:
-        return {
-            "total_votes": 0,
-            "total_models_with_data": 0,
-            "leaderboard": [],
-            "error": f"Could not retrieve leaderboard: {str(e)}"
-        }
-
 @router.get("/user-vote-leaderboard")
-def get_user_vote_leaderboard(db: Session = Depends(get_db)):
+def get_user_vote_leaderboard(
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis)
+):
     """
     Get user vote leaderboard showing users ranked by their total vote count in descending order.
     Returns users who have voted the most at the top.
+    Cached in Redis for 1 day.
     """
+    # Try to get from cache first
+    if redis_client:
+        from redis_client import CacheKeys, CacheExpiry
+        cache_key = CacheKeys.user_vote_leaderboard()
+        cached_result = redis_client.get_cache(cache_key)
+        if cached_result:
+            return cached_result
+    
     try:
         from sqlalchemy import func, text
         
@@ -1083,98 +1186,140 @@ def get_user_vote_leaderboard(db: Session = Depends(get_db)):
         total_users_with_votes = len(leaderboard)
         total_votes_cast = sum(user["total_votes"] for user in leaderboard)
         
-        return {
+        result = {
             "total_users_with_votes": total_users_with_votes,
             "total_votes_cast": total_votes_cast,
             "leaderboard": leaderboard
         }
         
+        # Cache the result for user vote leaderboard (1 day)
+        if redis_client:
+            redis_client.set_cache(cache_key, result, CacheExpiry.LEADERBOARD)
+        
+        return result
+        
     except Exception as e:
       raise HTTPException(status_code=500, detail=f"Could not retrieve user vote leaderboard: {str(e)}")
 
-@router.get("/score")
-def get_translation_scores(db: Session = Depends(get_db)):
+@router.get("/model-vote-leaderboard")
+def get_model_vote_leaderboard(
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis)
+):
     """
-    Get translation model scores in star rating format for frontend compatibility.
-    Converts comparison voting results to 1-5 star ratings based on win rates.
+    Get model performance leaderboard based on voting results with scores.
+    Score calculation: 1 point for clear wins + 0.5 points for ties.
+    Results are ordered by score in descending order.
+    Cached in Redis for 60 minutes.
     """
+    # Try to get from cache first
+    if redis_client:
+        from redis_client import CacheKeys, CacheExpiry
+        cache_key = CacheKeys.model_vote_leaderboard()
+        cached_result = redis_client.get_cache(cache_key)
+        if cached_result:
+            return cached_result
+    
     try:
         from sqlalchemy import func, text
         
-        # Query to get model-level statistics using the improved schema
-        model_stats = db.execute(text("""
+        # Complex SQL query to calculate model scores
+        model_scores = db.execute(text("""
+            WITH model_wins AS (
+                -- Count clear wins for each model
+                SELECT 
+                    mv.id as model_version_id,
+                    mv.version as model_name,
+                    mv.provider as provider,
+                    COUNT(v.id) as clear_wins
+                FROM model_version mv
+                JOIN translation_output trans_out ON mv.id = trans_out.model_version_id
+                JOIN vote v ON v.winner_id = trans_out.id AND v.is_tie = 0
+                GROUP BY mv.id, mv.version, mv.provider
+            ),
+            model_ties AS (
+                -- Count ties for each model (both output_a and output_b positions)
+                SELECT 
+                    mv.id as model_version_id,
+                    mv.version as model_name,
+                    mv.provider as provider,
+                    COUNT(v.id) as ties
+                FROM model_version mv
+                JOIN translation_output trans_out ON mv.id = trans_out.model_version_id
+                JOIN vote v ON (v.translation_output_a_id = trans_out.id OR v.translation_output_b_id = trans_out.id) 
+                             AND v.is_tie = 1
+                GROUP BY mv.id, mv.version, mv.provider
+            ),
+            model_comparisons AS (
+                -- Count total comparisons each model was involved in
+                SELECT 
+                    mv.id as model_version_id,
+                    mv.version as model_name,
+                    mv.provider as provider,
+                    COUNT(v.id) as total_comparisons
+                FROM model_version mv
+                JOIN translation_output trans_out ON mv.id = trans_out.model_version_id
+                JOIN vote v ON (v.translation_output_a_id = trans_out.id OR v.translation_output_b_id = trans_out.id)
+                GROUP BY mv.id, mv.version, mv.provider
+            )
             SELECT 
-                mv.id as model_version_id,
-                mv.version as model_version,
-                mv.provider,
-                COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) as total_wins,
-                COUNT(v.id) as total_comparisons,
-                ROUND(
-                    COUNT(CASE WHEN v.winner_id = to.id THEN 1 END) * 100.0 / 
-                    NULLIF(COUNT(v.id), 0), 2
-                ) as win_rate_percentage,
-                COUNT(CASE WHEN v.is_tie = 1 THEN 1 END) as ties_involved
-            FROM model_version mv
-            JOIN translation_output to ON mv.id = to.model_version_id
-            LEFT JOIN vote v ON (v.translation_output_a_id = to.id OR v.translation_output_b_id = to.id)
-            GROUP BY mv.id, mv.version, mv.provider
-            HAVING COUNT(v.id) > 0
-            ORDER BY win_rate_percentage DESC, total_wins DESC
+                COALESCE(mw.model_version_id, mt.model_version_id, mc.model_version_id) as model_version_id,
+                COALESCE(mw.model_name, mt.model_name, mc.model_name) as model_name,
+                COALESCE(mw.provider, mt.provider, mc.provider) as provider,
+                COALESCE(mw.clear_wins, 0) as clear_wins,
+                COALESCE(mt.ties, 0) as ties,
+                COALESCE(mc.total_comparisons, 0) as total_comparisons,
+                -- Calculate score: 1 point per win + 0.5 points per tie
+                (COALESCE(mw.clear_wins, 0) * 1.0 + COALESCE(mt.ties, 0) * 0.5) as score,
+                -- Calculate win rate percentage
+                CASE 
+                    WHEN COALESCE(mc.total_comparisons, 0) > 0 
+                    THEN ROUND((COALESCE(mw.clear_wins, 0) * 100.0) / mc.total_comparisons, 2)
+                    ELSE 0.0 
+                END as win_rate_percentage
+            FROM model_wins mw
+            FULL OUTER JOIN model_ties mt ON mw.model_version_id = mt.model_version_id
+            FULL OUTER JOIN model_comparisons mc ON COALESCE(mw.model_version_id, mt.model_version_id) = mc.model_version_id
+            WHERE COALESCE(mc.total_comparisons, 0) > 0
+            ORDER BY score DESC, clear_wins DESC, model_name ASC
         """)).fetchall()
         
         leaderboard = []
-        for stat in model_stats:
-            # Convert win rate to 1-5 star scale
-            win_rate = float(stat.win_rate_percentage) if stat.win_rate_percentage else 0.0
-            
-            # Map win rate to star rating (1.0 to 5.0)
-            # 0-20% win rate = 1-2 stars, 20-40% = 2-3 stars, etc.
-            if win_rate >= 80:
-                average_score = 4.5 + (win_rate - 80) / 20 * 0.5  # 4.5-5.0 stars
-            elif win_rate >= 60:
-                average_score = 3.5 + (win_rate - 60) / 20 * 1.0  # 3.5-4.5 stars
-            elif win_rate >= 40:
-                average_score = 2.5 + (win_rate - 40) / 20 * 1.0  # 2.5-3.5 stars
-            elif win_rate >= 20:
-                average_score = 1.5 + (win_rate - 20) / 20 * 1.0  # 1.5-2.5 stars
-            else:
-                average_score = 1.0 + win_rate / 20 * 0.5  # 1.0-1.5 stars
-            
-            # Create fake score breakdown based on the average score
-            primary_star = int(average_score)
-            remainder = average_score - primary_star
-            
-            score_breakdown = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
-            total_votes = stat.total_comparisons
-            
-            if total_votes > 0:
-                # Distribute votes across stars based on the calculated average
-                if remainder > 0.5 and primary_star < 5:
-                    score_breakdown[str(primary_star + 1)] = int(total_votes * remainder)
-                    score_breakdown[str(primary_star)] = total_votes - score_breakdown[str(primary_star + 1)]
-                else:
-                    score_breakdown[str(primary_star)] = int(total_votes * (1 - remainder))
-                    if primary_star > 1:
-                        score_breakdown[str(primary_star - 1)] = total_votes - score_breakdown[str(primary_star)]
-            
+        for i, stat in enumerate(model_scores, 1):
             leaderboard.append({
-                "model_version": stat.model_version,
+                "rank": i,
+                "model_name": stat.model_name,
                 "provider": stat.provider,
-                "total_votes": total_votes,
-                "average_score": round(average_score, 1),
-                "score_percentage": round(average_score * 20, 1),  # Convert to percentage (5 stars = 100%)
-                "score_breakdown": score_breakdown
+                "score": float(stat.score),
+                "clear_wins": stat.clear_wins,
+                "ties": stat.ties,
+                "total_comparisons": stat.total_comparisons,
+                "win_rate_percentage": float(stat.win_rate_percentage)
             })
         
-        return {
+        # Get overall statistics
+        total_votes = db.query(Vote).count()
+        total_models_with_data = len(leaderboard)
+        total_score = sum(model["score"] for model in leaderboard)
+        
+        result = {
+            "total_votes": total_votes,
+            "total_models_with_data": total_models_with_data,
+            "total_score": round(total_score, 1),
             "leaderboard": leaderboard
         }
         
+        # Cache the result for 60 minutes (arena score expiry)
+        if redis_client:
+            redis_client.set_cache(cache_key, result, CacheExpiry.ARENA_SCORE)
+        
+        return result
+        
     except Exception as e:
-        return {
-            "leaderboard": [],
-            "error": f"Could not retrieve scores: {str(e)}"
-        }
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Could not retrieve model vote leaderboard: {str(e)}"
+        )
 
 @router.get("/suggest_model", response_model=ModelSuggestionResponse)
 def suggest_model_pair():
