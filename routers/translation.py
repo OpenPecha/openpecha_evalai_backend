@@ -230,16 +230,12 @@ async def call_anthropic_model(model: str, text: str, prompt: Optional[str] = No
     if not anthropic_client:
         yield "Error: Anthropic client not configured - no API key provided"
         return
-        
-    user_message = text
-    if prompt:
-        user_message = f"Translation instruction: {prompt}\n\nText to translate: {text}"
-    
+       
     try:
         with anthropic_client.messages.stream(
             model=model,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=[{"role": "user", "content": text}],
             max_tokens=2000
         ) as stream:
             for text_chunk in stream.text_stream:
@@ -294,7 +290,7 @@ async def call_deepseek_model(model: str, text: str, prompt: Optional[str] = Non
         
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if prompt:
-        messages.append({"role": "user", "content": f"Translation instruction: {prompt}"})
+        messages.append({"role": "user", "content": prompt})
     messages.append({"role": "user", "content": text})
     
     try:
@@ -340,7 +336,6 @@ async def mock_translation_stream(model: str, text: str, prompt: Optional[str] =
         yield char
 
 async def stream_translation(model: str, text: str, prompt: Optional[str] = None):
-    """Stream translation from the specified model - returns errors if not configured"""
     provider = MODEL_PROVIDERS.get(model, "unknown")
     
     # Try real AI - return actual API errors
