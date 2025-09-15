@@ -16,6 +16,7 @@ from schemas.translation import (
 )
 import uuid
 import json
+import datetime
 import asyncio
 import os
 import time
@@ -59,6 +60,7 @@ def get_model_providers():
     default_providers = {
         "claude-3-5-sonnet-20241022": "anthropic",
         "gemini-1.5-flash": "google",
+        "deepseek/deepseek-v3.1": "deepseek-v3",
     }
     
     model_providers_env = os.getenv("MODEL_PROVIDERS")
@@ -287,11 +289,13 @@ async def call_deepseek_model(model: str, text: str, prompt: Optional[str] = Non
     if not deepseek_client:
         yield "Error: DeepSeek client not configured - no API key provided"
         return
-        
+    
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if prompt:
         messages.append({"role": "user", "content": prompt})
     messages.append({"role": "user", "content": text})
+    
+    print(f"DeepSeek API call - Original model: {model}")
     
     try:
         stream = deepseek_client.chat.completions.create(
@@ -345,6 +349,10 @@ async def mock_translation_stream(model: str, text: str, prompt: Optional[str] =
 async def stream_translation(model: str, text: str, prompt: Optional[str] = None):
     provider = MODEL_PROVIDERS.get(model, "unknown")
     
+    # Debug logging for model and provider detection
+    print(f"Stream translation - Model: {model}, Provider: {provider}")
+    print(f"Available MODEL_PROVIDERS: {MODEL_PROVIDERS}")
+    
     # Try real AI - return actual API errors
     if provider == "openai":
         if openai_client:
@@ -371,8 +379,13 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
     
     elif provider == "deepseek-v3":
         if deepseek_client:
-            async for chunk in call_deepseek_model(model, text, prompt):
-                yield chunk
+            try:
+                async for chunk in call_deepseek_model(model, text, prompt):
+                    yield chunk
+            except Exception as e:
+                yield f"DeepSeek API Error: {str(e)}"
+        else:
+            yield "Error: DeepSeek client not configured - no API key provided"
       
     else:
         yield f"Configuration Error: Unknown model provider '{provider}' for model '{model}'. Supported providers: openai, anthropic, google, deepseek-v3"
@@ -808,13 +821,38 @@ def submit_comparison_vote(
             detail=f"Translation output with ID {vote_request.translation_output2_id} not found"
         )
     
-    # Ensure both outputs are from the same translation job
-    if output1.job_id != output2.job_id:
+    # Check if outputs are from the same job OR have the same source text
+    print(f"Output job IDs: {output1.job_id} vs {output2.job_id}")
+    
+    # Get the jobs to check source text
+    job1 = db.query(TranslationJob).filter(TranslationJob.id == output1.job_id).first()
+    job2 = db.query(TranslationJob).filter(TranslationJob.id == output2.job_id).first()
+    
+    if not job1 or not job2:
         raise HTTPException(
-            status_code=400,
-            detail="Translation outputs must be from the same translation job for valid comparison"
+            status_code=404,
+            detail="One or both translation jobs not found"
         )
     
+    # Allow comparison if same job OR same source text (for cross-session comparisons)
+    if output1.job_id != output2.job_id and job1.source_text != job2.source_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Translation outputs must be from the same translation job or have the same source text for valid comparison"
+        )
+    
+    print(f"Source texts match: {job1.source_text == job2.source_text}")
+    print(f"Job1 source text: {job1.source_text[:50]}...")
+    print(f"Job2 source text: {job2.source_text[:50]}...")
+    
+    # Determine which job ID to use for the vote record
+    # If same job, use that job ID. If different jobs with same source text, use the more recent job
+    if output1.job_id == output2.job_id:
+        vote_job_id = output1.job_id
+    else:
+        # Use the job with the later created_at timestamp (more recent)
+        vote_job_id = job1.id if job1.created_at >= job2.created_at else job2.id
+        print(f"Cross-job comparison: Using job {vote_job_id} (more recent) for vote record")
     
     # Normalize UUID ordering for consistent storage (A < B lexicographically)
     if output1_uuid < output2_uuid:
@@ -849,15 +887,53 @@ def submit_comparison_vote(
     ).first()
     
     if existing_vote:
-        raise HTTPException(
-            status_code=409,
-            detail="User has already voted for this comparison. Only one vote per comparison pair is allowed."
+        # Update the existing vote instead of creating a new one
+        existing_vote.winner_id = winner_id
+        existing_vote.is_tie = is_tie
+        existing_vote.response_time_ms = vote_request.response_time_ms
+        existing_vote.comment = vote_request.comment
+        existing_vote.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        
+        try:
+            db.commit()
+            db.refresh(existing_vote)
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error while updating vote: {str(e)}"
+            )
+        
+        # Invalidate relevant caches when a vote is updated
+        if redis_client:
+            from redis_client import CacheKeys
+            # Clear arena scores cache (they depend on vote results)
+            redis_client.delete_cache(CacheKeys.arena_score())
+            # Clear leaderboard cache
+            redis_client.delete_cache(CacheKeys.leaderboard())
+            # Clear user vote leaderboard cache  
+            redis_client.delete_cache(CacheKeys.user_vote_leaderboard())
+            # Clear vote statistics cache
+            redis_client.delete_cache(CacheKeys.vote_stats())
+            # Clear model scores cache
+            redis_client.delete_cache(CacheKeys.model_scores())
+            # Clear model vote leaderboard cache
+            redis_client.delete_cache(CacheKeys.model_vote_leaderboard())
+        
+        return ComparisonVoteResponse(
+            message="Vote updated successfully",
+            vote_id=str(existing_vote.id),
+            translation_output_a_id=str(output_a_uuid),
+            translation_output_b_id=str(output_b_uuid),
+            winner_id=str(winner_id) if winner_id else None,
+            is_tie=is_tie,
+            translation_job_id=str(vote_job_id)
         )
     
     # Create new comparison vote with improved schema
     new_vote = Vote(
         user_id=current_user.id,
-        translation_job_id=output1.job_id,  # Same for both outputs (validated above)
+        translation_job_id=vote_job_id,  # Use determined job ID (may be different for cross-job comparisons)
         translation_output_a_id=output_a_uuid,
         translation_output_b_id=output_b_uuid,
         winner_id=winner_id,
@@ -906,7 +982,7 @@ def submit_comparison_vote(
         translation_output_b_id=str(output_b_uuid),
         winner_id=str(winner_id) if winner_id else None,
         is_tie=is_tie,
-        translation_job_id=str(output1.job_id)
+        translation_job_id=str(vote_job_id)
     )
 
 # Constants for Redis cache management
@@ -1339,10 +1415,13 @@ def get_model_vote_leaderboard(
         )
 
 @router.get("/suggest_model", response_model=ModelSuggestionResponse)
-def suggest_model_pair():
+def suggest_model_pair(
+    source_text: str = Query(None, description="Source text to check for already used models"),
+    db: Session = Depends(get_db)
+):
     """
-    Suggest two random models for comparison from all possible combinations.
-    Uses only MODEL_PROVIDERS and randomly selects from all possible pairs.
+    Suggest two models for comparison, excluding models already used with the same input.
+    If source_text is provided, filters out models that have already been used with that text.
     """
     import itertools
     import random
@@ -1356,12 +1435,123 @@ def suggest_model_pair():
             "model_a": "claude-3-5-sonnet-20241022",
             "model_b": "gemini-1.5-pro",
             "selection_method": "fallback",
+            "source_text": source_text,
             "note": "Insufficient models in MODEL_PROVIDERS"
+        }
+    
+    # If source_text is provided, filter out models already used with this input
+    filtered_models = available_models.copy()
+    used_models = []
+    debug_info = []
+    
+    if source_text and source_text.strip():
+        try:
+            source_text_clean = source_text.strip()
+            debug_info.append(f"Searching for existing translations with source_text: '{source_text_clean[:50]}...'")
+            
+            # Query existing translation jobs with the same source text
+            existing_jobs = db.query(TranslationJob).filter(
+                TranslationJob.source_text == source_text_clean
+            ).all()
+            
+            debug_info.append(f"Found {len(existing_jobs)} existing jobs with this source text")
+            
+            if existing_jobs:
+                # Get all model versions used with this source text using a more direct approach
+                used_model_versions = []
+                
+                for job in existing_jobs:
+                    # Get all outputs for this job
+                    outputs = db.query(TranslationOutput).filter(
+                        TranslationOutput.job_id == job.id
+                    ).all()
+                    
+                    for output in outputs:
+                        # Get the model version for each output
+                        model_version = db.query(ModelVersion).filter(
+                            ModelVersion.id == output.model_version_id
+                        ).first()
+                        
+                        if model_version and model_version not in used_model_versions:
+                            used_model_versions.append(model_version)
+                
+                # Extract the version names (model identifiers)
+                used_models = [mv.version for mv in used_model_versions]
+                debug_info.append(f"Models already used with this input: {used_models}")
+                
+                # Filter out used models from available models
+                filtered_models = [model for model in available_models if model not in used_models]
+                debug_info.append(f"Available models: {available_models}")
+                debug_info.append(f"Filtered models (unused): {filtered_models}")
+                
+                # Additional check: ensure we're actually excluding the right models
+                if used_models:
+                    for used_model in used_models:
+                        if used_model in available_models:
+                            debug_info.append(f"Successfully excluding used model: {used_model}")
+                        else:
+                            debug_info.append(f"WARNING: Used model '{used_model}' not in available models list")
+                            
+                # Double-check filtering logic
+                should_be_filtered = []
+                for model in available_models:
+                    if model in used_models:
+                        should_be_filtered.append(model)
+                        
+                debug_info.append(f"Models that should be filtered out: {should_be_filtered}")
+                debug_info.append(f"Actual filtered result: {filtered_models}")
+                
+                # Ensure we have the right logic
+                manually_filtered = []
+                for model in available_models:
+                    if model not in used_models:
+                        manually_filtered.append(model)
+                        
+                if manually_filtered != filtered_models:
+                    debug_info.append(f"FILTERING MISMATCH! Manual: {manually_filtered}, Auto: {filtered_models}")
+                    filtered_models = manually_filtered  # Use the manual result
+                
+        except Exception as e:
+            # If there's an error querying the database, log it but continue with all models
+            debug_info.append(f"Error filtering used models: {e}")
+            print(f"Error filtering used models: {e}")
+    
+    # Use filtered models if we have enough, otherwise fall back to all models
+    if len(filtered_models) >= 2:
+        models_to_use = filtered_models
+        debug_info.append(f"Using {len(filtered_models)} unused models: {filtered_models}")
+    elif len(filtered_models) == 1:
+        # If we have one unused model, pair it with a random used model
+        unused_model = filtered_models[0]
+        import random
+        used_models_available = [m for m in used_models if m in available_models]
+        if used_models_available:
+            models_to_use = [unused_model] + [random.choice(used_models_available)]
+            debug_info.append(f"Pairing 1 unused model ({unused_model}) with 1 used model ({models_to_use[1]})")
+        else:
+            models_to_use = available_models
+            debug_info.append(f"Only 1 unused model but no used models available, using all models")
+    else:
+        # No unused models available, fall back to all models
+        models_to_use = available_models
+        debug_info.append(f"No unused models available, using all {len(available_models)} models")
+    
+    debug_info.append(f"Final models to use: {models_to_use}")
+    
+    if len(models_to_use) < 2:
+        # If we still don't have enough models, use fallback
+        return {
+            "model_a": "claude-3-5-sonnet-20241022",
+            "model_b": "gemini-1.5-pro",
+            "selection_method": "fallback",
+            "source_text": source_text,
+            "used_models": used_models,
+            "note": "Insufficient unused models available"
         }
     
     # Generate all possible combinations (A,B) and (B,A) to ensure fairness
     all_combinations = []
-    for combo in itertools.combinations(available_models, 2):
+    for combo in itertools.combinations(models_to_use, 2):
         # Add both (A,B) and (B,A) to ensure every model can be in either position
         all_combinations.append((combo[0], combo[1]))
         all_combinations.append((combo[1], combo[0]))
@@ -1369,13 +1559,182 @@ def suggest_model_pair():
     # Randomly select one combination from all possibilities
     selected_combination = random.choice(all_combinations)
     
+    # Determine selection method based on what models we're using
+    if len(filtered_models) >= 2:
+        selection_method = "filtered_random"
+    elif len(filtered_models) == 1:
+        selection_method = "mixed_unused_used"
+    else:
+        selection_method = "fallback_all_used"
+    note_parts = [f"Selected from {len(all_combinations)} possible combinations"]
+    
+    if source_text and used_models:
+        note_parts.append(f"Excluded {len(used_models)} already used models: {', '.join(used_models)}")
+    
+    # Add debug information to note for troubleshooting
+    if debug_info:
+        note_parts.extend(debug_info)
+    
     return {
         "model_a": selected_combination[0],
         "model_b": selected_combination[1],
-        "selection_method": "random",
+        "selection_method": selection_method,
+        "source_text": source_text,
+        "used_models": used_models,
         "total_combinations": len(all_combinations),
-        "note": f"Randomly selected from {len(all_combinations)} possible combinations"
+        "note": " | ".join(note_parts)
     }
+
+@router.get("/debug/vote-comparison")
+def debug_vote_comparison(
+    output1_id: str = Query(..., description="First translation output ID"),
+    output2_id: str = Query(..., description="Second translation output ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Debug endpoint to check if two translation outputs can be compared
+    """
+    try:
+        from uuid import UUID
+        
+        # Validate UUIDs
+        try:
+            output1_uuid = UUID(output1_id)
+            output2_uuid = UUID(output2_id)
+        except ValueError:
+            return {"error": "Invalid UUID format"}
+        
+        # Get outputs
+        output1 = db.query(TranslationOutput).filter(TranslationOutput.id == output1_uuid).first()
+        output2 = db.query(TranslationOutput).filter(TranslationOutput.id == output2_uuid).first()
+        
+        if not output1 or not output2:
+            return {
+                "error": "One or both outputs not found",
+                "output1_found": output1 is not None,
+                "output2_found": output2 is not None
+            }
+        
+        # Get jobs
+        job1 = db.query(TranslationJob).filter(TranslationJob.id == output1.job_id).first()
+        job2 = db.query(TranslationJob).filter(TranslationJob.id == output2.job_id).first()
+        
+        if not job1 or not job2:
+            return {
+                "error": "One or both jobs not found",
+                "job1_found": job1 is not None,
+                "job2_found": job2 is not None
+            }
+        
+        # Check comparison validity
+        same_job = output1.job_id == output2.job_id
+        same_source_text = job1.source_text == job2.source_text
+        can_compare = same_job or same_source_text
+        
+        return {
+            "output1_id": output1_id,
+            "output2_id": output2_id,
+            "output1_job_id": str(output1.job_id),
+            "output2_job_id": str(output2.job_id),
+            "same_job": same_job,
+            "same_source_text": same_source_text,
+            "can_compare": can_compare,
+            "job1_source_text_preview": job1.source_text[:100] + "..." if len(job1.source_text) > 100 else job1.source_text,
+            "job2_source_text_preview": job2.source_text[:100] + "..." if len(job2.source_text) > 100 else job2.source_text,
+            "job1_model": str(output1.model_version_id),
+            "job2_model": str(output2.model_version_id),
+            "validation_result": "Valid for comparison" if can_compare else "Invalid for comparison"
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "output1_id": output1_id,
+            "output2_id": output2_id
+        }
+
+@router.get("/debug/deepseek-config")
+def debug_deepseek_config():
+    """
+    Debug endpoint to check DeepSeek configuration
+    """
+    return {
+        "deepseek_client_configured": deepseek_client is not None,
+        "deepseek_api_key_present": bool(os.getenv("DEEPSEEK_API_KEY")),
+        "openai_available": OPENAI_AVAILABLE,
+        "model_providers": MODEL_PROVIDERS,
+        "deepseek_in_providers": "deepseek/deepseek-v3.1" in MODEL_PROVIDERS,
+        "deepseek_provider_value": MODEL_PROVIDERS.get("deepseek/deepseek-v3.1", "not found"),
+        "client_base_url": "https://api.novita.ai/openai" if deepseek_client else None
+    }
+
+@router.get("/debug/source-text-models")
+def debug_source_text_models(
+    source_text: str = Query(..., description="Source text to debug"),
+    db: Session = Depends(get_db)
+):
+    """
+    Debug endpoint to see what models have been used with a specific source text
+    """
+    try:
+        # Query existing translation jobs with the same source text
+        existing_jobs = db.query(TranslationJob).filter(
+            TranslationJob.source_text == source_text.strip()
+        ).all()
+        
+        debug_data = {
+            "source_text": source_text,
+            "source_text_length": len(source_text),
+            "jobs_found": len(existing_jobs),
+            "job_details": [],
+            "used_model_versions": [],
+            "available_models": list(MODEL_PROVIDERS.keys())
+        }
+        
+        if existing_jobs:
+            for job in existing_jobs:
+                job_info = {
+                    "job_id": str(job.id),
+                    "source_text_match": job.source_text == source_text.strip(),
+                    "source_text_preview": job.source_text[:100] + "..." if len(job.source_text) > 100 else job.source_text,
+                    "outputs": []
+                }
+                
+                # Get outputs for this job
+                outputs = db.query(TranslationOutput).filter(
+                    TranslationOutput.job_id == job.id
+                ).all()
+                
+                for output in outputs:
+                    model_version = db.query(ModelVersion).filter(
+                        ModelVersion.id == output.model_version_id
+                    ).first()
+                    
+                    output_info = {
+                        "output_id": str(output.id),
+                        "model_version_id": str(output.model_version_id),
+                        "model_version": model_version.version if model_version else "Unknown",
+                        "model_provider": model_version.provider if model_version else "Unknown"
+                    }
+                    job_info["outputs"].append(output_info)
+                    
+                    if model_version and model_version.version not in debug_data["used_model_versions"]:
+                        debug_data["used_model_versions"].append(model_version.version)
+                
+                debug_data["job_details"].append(job_info)
+        
+        # Show what would be filtered
+        filtered_models = [model for model in debug_data["available_models"] if model not in debug_data["used_model_versions"]]
+        debug_data["filtered_models"] = filtered_models
+        debug_data["would_suggest_from"] = filtered_models if len(filtered_models) >= 2 else debug_data["available_models"]
+        
+        return debug_data
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "source_text": source_text
+        }
 
 @router.get("/status")
 def get_system_status():

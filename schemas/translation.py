@@ -119,5 +119,7 @@ class ModelSuggestionResponse(BaseModel):
     model_a: str = Field(..., description="First suggested model version")
     model_b: str = Field(..., description="Second suggested model version")
     selection_method: Optional[str] = Field(None, description="Method used for selection (e.g., weighted_random)")
-    total_models_considered: Optional[int] = Field(None, description="Number of models considered for selection")
+    source_text: Optional[str] = Field(None, description="Source text used for filtering already used models")
+    used_models: Optional[List[str]] = Field(None, description="List of models already used with this source text")
+    total_combinations: Optional[int] = Field(None, description="Number of model combinations considered")
     note: Optional[str] = Field(None, description="Additional information about the selection process")

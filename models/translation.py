@@ -60,12 +60,15 @@ class Vote(Base):
     """
     Represents a user's preference vote when comparing two translation outputs.
     Optimized for efficient leaderboard queries and analytics.
+    
+    Allows comparison of outputs from the same job OR outputs with the same source text
+    (enabling cross-session comparisons for the same input).
     """
     __tablename__ = "vote"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     user_id = Column(String, ForeignKey("user.id"), nullable=False)  # User who voted
-    translation_job_id = Column(UUID(as_uuid=True), ForeignKey("translation_job.id"), nullable=False)  # Context: which job/prompt this comparison is for
+    translation_job_id = Column(UUID(as_uuid=True), ForeignKey("translation_job.id"), nullable=False)  # Context: reference job for this comparison (more recent job for cross-job comparisons)
     
     # Normalized comparison pair: always store smaller UUID first to prevent duplicates
     translation_output_a_id = Column(UUID(as_uuid=True), ForeignKey("translation_output.id"), nullable=False)  # Smaller UUID (lexicographically)
