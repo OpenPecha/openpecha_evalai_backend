@@ -312,8 +312,15 @@ async def call_deepseek_model(model: str, text: str, prompt: Optional[str] = Non
         )
         
         for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            # Defensive: check chunk.choices exists and is non-empty
+            if hasattr(chunk, "choices") and chunk.choices and len(chunk.choices) > 0:
+                # Defensive: check .delta and .content exist
+                delta = getattr(chunk.choices[0], "delta", None)
+                if delta and hasattr(delta, "content"):
+                    content = delta.content
+                    if content:
+                        yield content
+              
     except Exception as e:
         # Return the actual API error instead of generic message
         yield f"DeepSeek API Error: {str(e)}"
