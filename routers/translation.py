@@ -54,7 +54,7 @@ db_dependency = Depends(get_db)
 # Constants - System prompt from environment variable
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT","Be a helpful assistant")
 
-# Model provider mapping - read from environment variable with fallback
+# Model provider mapping - read from environment variable with fallback to default configuration
 def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""
     default_providers = {
@@ -221,8 +221,10 @@ async def call_openai_model(model: str, text: str, prompt: Optional[str] = None)
         )
         
         for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            if chunk.choices[0].delta.content is not None:
+                content = chunk.choices[0].delta.content
+                if content:  # Also check for empty strings
+                    yield content
     except Exception as e:
         # Return the actual API error instead of generic message
         yield f"OpenAI API Error: {str(e)}"
@@ -277,7 +279,8 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
         model=model,
         contents=content,
         config=generate_content_config,):
-                yield chunk.text
+                if chunk.text is not None and chunk.text:  # Check for None and empty
+                    yield chunk.text
             
        
     except Exception as e:
@@ -314,15 +317,15 @@ async def call_deepseek_model(model: str, text: str, prompt: Optional[str] = Non
                 "min_p": 0
             }
         )
-        
         for chunk in stream:
             # Defensive: check chunk.choices exists and is non-empty
             if hasattr(chunk, "choices") and chunk.choices and len(chunk.choices) > 0:
                 # Defensive: check .delta and .content exist
-                delta = getattr(chunk.choices[0], "delta", None)
+                delta = getattr(chunk.choices[0], "delta", "")
+                print(delta)
                 if delta and hasattr(delta, "content"):
                     content = delta.content
-                    if content:
+                    if content is not None and content:  # More explicit check
                         yield content
               
     except Exception as e:
