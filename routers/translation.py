@@ -57,11 +57,17 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT","Be a helpful assistant")
 # Model provider mapping - read from environment variable with fallback to default configuration
 def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""
-    default_providers = {
-        "claude-3-5-sonnet-20241022": "anthropic",
-        "gemini-1.5-flash": "google",
-        "deepseek/deepseek-v3.1": "deepseek-v3",
-    }
+    default_providers = {"deepseek/deepseek-v3.1": "deepseek-v3",
+                         "claude-3-5-sonnet-20241022": "anthropic",
+                         "claude-3-5-haiku-20241022": "anthropic",
+                         "claude-3-opus-20240229": "anthropic",
+                         "claude-sonnet-4-20250514": "anthropic",
+                         "claude-3-7-sonnet-latest": "anthropic",
+                         "claude-3-7-sonnet-latest-thinking": "anthropic",
+                         "gemini-2.5-pro": "google",
+                         "gemini-2.5-flash": "google",
+                         "gemini-2.0-flash": "google",
+                         "gemini-2.5-flash-thinking": "google"}
     
     model_providers_env = os.getenv("MODEL_PROVIDERS")
     if model_providers_env:
@@ -1454,6 +1460,7 @@ def suggest_model_pair(
     
     # If source_text is provided, filter out models already used with this input
     filtered_models = available_models.copy()
+    
     used_models = []
     debug_info = []
     
@@ -1490,12 +1497,9 @@ def suggest_model_pair(
                 
                 # Extract the version names (model identifiers)
                 used_models = [mv.version for mv in used_model_versions]
-                debug_info.append(f"Models already used with this input: {used_models}")
                 
                 # Filter out used models from available models
                 filtered_models = [model for model in available_models if model not in used_models]
-                debug_info.append(f"Available models: {available_models}")
-                debug_info.append(f"Filtered models (unused): {filtered_models}")
                 
                 # Additional check: ensure we're actually excluding the right models
                 if used_models:
