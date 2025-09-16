@@ -64,7 +64,7 @@ def get_model_providers():
                          "claude-sonnet-4-20250514": "anthropic",
                          "claude-3-7-sonnet-latest": "anthropic",
                          "claude-3-7-sonnet-latest-thinking": "anthropic",
-                         "gemini-2.5-pro": "google",
+                         "gemini-2.5-pro-thinking": "google",
                          "gemini-2.5-flash": "google",
                          "gemini-2.0-flash": "google",
                          "gemini-2.5-flash-thinking": "google"}
