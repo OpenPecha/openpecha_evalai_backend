@@ -235,12 +235,18 @@ async def call_anthropic_model(model: str, text: str, prompt: Optional[str] = No
         yield "Error: Anthropic client not configured - no API key provided"
         return
        
+    is_thinking_model = "thinking" in model.lower()
+    model = model.replace("-thinking", "")
     try:
         with anthropic_client.messages.stream(
             model=model,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": text}],
-            max_tokens=2000
+            max_tokens=4000,
+            thinking= {
+                "type": "enabled",
+                "budget_tokens": 2000
+            } if is_thinking_model else {"type":"disabled"}
         ) as stream:
             for text_chunk in stream.text_stream:
                 yield text_chunk
@@ -253,7 +259,7 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
     if not google_configured:
         yield "Error: Google Generative AI not configured - no API key provided"
         return
-
+    model = model.replace("-thinking", "")
     try:
         # Initialize the model
         client = genai.Client(
@@ -269,16 +275,13 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
             ),
         ]
 
-        # If model is gemini-2.0-flash, do not include thinking_config
-        if model == "gemini-2.0-flash":
-            generate_content_config = genai.types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-            )
-        else:
-            generate_content_config = genai.types.GenerateContentConfig(
+      
+        # Set thinking_budget based on whether "-thinking" is in the model name
+        thinking_budget = -1 if "-thinking" in model else 0
+        generate_content_config = genai.types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 thinking_config=genai.types.ThinkingConfig(
-                    thinking_budget=-1,
+                    thinking_budget=thinking_budget,
                 ),
             )
 
