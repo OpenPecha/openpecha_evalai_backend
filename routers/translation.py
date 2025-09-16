@@ -265,7 +265,6 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
     if not google_configured:
         yield "Error: Google Generative AI not configured - no API key provided"
         return
-    model = model.replace("-thinking", "")
     try:
         # Initialize the model
         client = genai.Client(
@@ -290,7 +289,8 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
                     thinking_budget=thinking_budget,
                 ),
             )
-
+        
+        model = model.replace("-thinking", "")
         for chunk in client.models.generate_content_stream(
             model=model,
             contents=content,
