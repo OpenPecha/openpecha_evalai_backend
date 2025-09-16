@@ -253,36 +253,43 @@ async def call_google_model(model: str, text: str, prompt: Optional[str] = None)
     if not google_configured:
         yield "Error: Google Generative AI not configured - no API key provided"
         return
-        
+
     try:
         # Initialize the model
         client = genai.Client(
-        api_key=os.environ.get("GEMINI_API_KEY"),
-    )
-     
-        content=[
-        genai.types.Content(
-            role="user",
-            parts=[
-                genai.types.Part.from_text(text=text),
-            ],
-        ),
-    ]
-        generate_content_config = genai.types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        thinking_config = genai.types.ThinkingConfig(
-            thinking_budget=-1,
-        ),
-    )
-           
+            api_key=os.environ.get("GEMINI_API_KEY"),
+        )
+
+        content = [
+            genai.types.Content(
+                role="user",
+                parts=[
+                    genai.types.Part.from_text(text=text),
+                ],
+            ),
+        ]
+
+        # If model is gemini-2.0-flash, do not include thinking_config
+        if model == "gemini-2.0-flash":
+            generate_content_config = genai.types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+            )
+        else:
+            generate_content_config = genai.types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                thinking_config=genai.types.ThinkingConfig(
+                    thinking_budget=-1,
+                ),
+            )
+
         for chunk in client.models.generate_content_stream(
-        model=model,
-        contents=content,
-        config=generate_content_config,):
-                if chunk.text is not None and chunk.text:  # Check for None and empty
-                    yield chunk.text
-            
-       
+            model=model,
+            contents=content,
+            config=generate_content_config,
+        ):
+            if chunk.text is not None and chunk.text:  # Check for None and empty
+                yield chunk.text
+
     except Exception as e:
         # Return the actual API error instead of generic message
         yield f"Google API Error: {str(e)}"
