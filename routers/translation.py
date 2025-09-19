@@ -24,6 +24,8 @@ import logging
 from sse_starlette import EventSourceResponse
 from dotenv import load_dotenv
 
+from models.template import Template
+
 load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -409,6 +411,11 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
     else:
         yield f"Configuration Error: Unknown model provider '{provider}' for model '{model}'. Supported providers: openai, anthropic, google, deepseek-v3"
 
+async def get_template_text(db: Session, template_id: str):
+    template = db.query(Template).filter(Template.id == template_id).first()
+    return template.template_text
+
+
 @router.post("/stream")
 async def translate_text(
     model: str = Query(..., description="Model version to use for translation"),
@@ -466,12 +473,15 @@ async def translate_text(
             status_code=400, 
             detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
         )
+
+
+    
     
     # Create translation job
     job = TranslationJob(
         source_text=request.text,
         prompt=request.prompt,
-        template=request.template,
+        template=get_template_text(db, request.template_id),
         target_language=request.target_language,
         user_id=current_user.id
     )
@@ -586,7 +596,7 @@ def translate_multi_model(
     job = TranslationJob(
         source_text=request.text,
         prompt=request.prompt,
-        template=request.template,
+        template=get_template_text(db, request.template_id),
         target_language=request.target_language,
         user_id=current_user.id
     )

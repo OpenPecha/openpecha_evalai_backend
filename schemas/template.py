@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-import datetime
+from datetime import datetime
 
 class TemplateRead(BaseModel):
     id: str
