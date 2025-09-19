@@ -411,8 +411,9 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
     else:
         yield f"Configuration Error: Unknown model provider '{provider}' for model '{model}'. Supported providers: openai, anthropic, google, deepseek-v3"
 
-async def get_template_text(db: Session, template_id: str):
+def get_template_text(db: Session, template_id: str):
     template = db.query(Template).filter(Template.id == template_id).first()
+
     return template.template_text
 
 
