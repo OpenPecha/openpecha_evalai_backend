@@ -506,7 +506,7 @@ async def translate_text(
     # Check for cached translation before making API call
     cached_output = None
     if model_version_id != "skip_db_operations":
-        cached_output = find_cached_translation(db, request.text, model_version_id, request.prompt)
+        cached_output = find_cached_translation(db, text_combined_with_template, model_version_id, request.prompt)
         
     if cached_output:
         
@@ -629,7 +629,7 @@ def translate_multi_model(
         
         # Check for cached translation for this model
         if model_version_id != "skip_db_operations":
-            cached_output = find_cached_translation(db, request.text, model_version_id, request.prompt)
+            cached_output = find_cached_translation(db, text_combined_with_template, model_version_id, request.prompt)
             if cached_output:
                 cached_outputs[model] = cached_output
     
@@ -664,7 +664,7 @@ def translate_multi_model(
                 return
             
             try:
-                async for chunk in stream_translation(model, request.text, request.prompt):
+                async for chunk in stream_translation(model, text_combined_with_template, request.prompt):
                     full_text += chunk
                     
                     # Check if this chunk is an error message
