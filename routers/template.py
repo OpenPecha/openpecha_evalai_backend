@@ -25,28 +25,20 @@ async def list_all_templates(db: db_dependency):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{username}", response_model=List[TemplateRead], status_code=status.HTTP_200_OK)
+@router.get("/users/{username}", response_model=List[TemplateRead], status_code=status.HTTP_200_OK)
 async def list_all_templates_by_username(db: db_dependency, username: str = Path(..., description="This is the username of the template")):
     try:
         return db.query(Template).filter(Template.username == username).all()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{template_id}", response_model=TemplateRead, status_code=status.HTTP_200_OK)
-async def get_template_by_id(db: db_dependency, template_id: str = Path(..., description="This is the id of the template")):
+@router.get("/{template_id}", status_code=status.HTTP_200_OK)
+async def get_detail_template(db: db_dependency, template_id: str = Path(..., description="This is the id of the template")):
     try:
-        template = db.query(Template).filter(Template.id == template_id).first()
-        return TemplateRead(
-            id=template.id,
-            template_name=template.template_name,
-            username=template.username,
-            template_text=template.template_text,
-            template_score=template.template_score,
-            created_at=template.created_at,
-            updated_at=template.updated_at
-        )
+        return db.query(Template).filter(Template.id == template_id).first()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/create", response_model=TemplateRead, status_code=status.HTTP_201_CREATED)
 async def create_template(
@@ -79,7 +71,7 @@ async def create_template(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{template_id}", status_code=status.HTTP_200_OK)
-async def delete_template(db: db_dependency, template_id: str = Path(..., description="This is the id of the template")):
+async def delete_template_by_id(db: db_dependency, template_id: str = Path(..., description="This is the id of the template")):
     try:
         template = db.query(Template).filter(Template.id == template_id).first()
         db.delete(template)
