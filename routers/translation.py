@@ -413,7 +413,6 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
 
 def get_template_text(db: Session, template_id: str):
     template = db.query(Template).filter(Template.id == template_id).first()
-
     return template.template_text
 
 
@@ -476,13 +475,14 @@ async def translate_text(
         )
 
 
-    
+    template = get_template_text(db, request.template_id)
+    text_combined_with_template = f"{template}\n\n{request.text}"
     
     # Create translation job
     job = TranslationJob(
-        source_text=request.text,
+        source_text=text_combined_with_template,
         prompt=request.prompt,
-        template=get_template_text(db, request.template_id),
+        template=template,
         target_language=request.target_language,
         user_id=current_user.id
     )
@@ -593,11 +593,14 @@ def translate_multi_model(
                 detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
             )
     
+    template = get_template_text(db, request.template_id)
+    text_combined_with_template = f"{template}\n\n{request.text}"
+
     # Create translation job
     job = TranslationJob(
-        source_text=request.text,
+        source_text=text_combined_with_template,
         prompt=request.prompt,
-        template=get_template_text(db, request.template_id),
+        template=template,
         target_language=request.target_language,
         user_id=current_user.id
     )
