@@ -476,7 +476,7 @@ async def translate_text(
 
 
     template = get_template_text(db, request.template_id)
-    text_combined_with_template = f"{template}\n'{request.text}'"
+    text_combined_with_template = f"{template}\n{request.text}"
     
     # Create translation job
     job = TranslationJob(
@@ -530,7 +530,7 @@ async def translate_text(
         error_message = None
         
         try:
-            async for chunk in stream_translation(model, request.text, request.prompt):
+            async for chunk in stream_translation(model, text_combined_with_template, request.prompt):
                 full_text += chunk
                 
                 # Check if this chunk is an error message
@@ -594,7 +594,7 @@ def translate_multi_model(
             )
     
     template = get_template_text(db, request.template_id)
-    text_combined_with_template = f"{template}\n'{request.text}'"
+    text_combined_with_template = f"{template}\n{request.text}"
 
     # Create translation job
     job = TranslationJob(
