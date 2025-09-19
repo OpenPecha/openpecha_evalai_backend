@@ -476,7 +476,7 @@ async def translate_text(
 
 
     template = get_template_text(db, request.template_id)
-    text_combined_with_template = f"{template}\n\n{request.text}"
+    text_combined_with_template = f"{template}\n'{request.text}'"
     
     # Create translation job
     job = TranslationJob(
@@ -594,7 +594,7 @@ def translate_multi_model(
             )
     
     template = get_template_text(db, request.template_id)
-    text_combined_with_template = f"{template}\n\n{request.text}"
+    text_combined_with_template = f"{template}\n'{request.text}'"
 
     # Create translation job
     job = TranslationJob(
