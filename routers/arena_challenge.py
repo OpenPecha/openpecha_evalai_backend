@@ -17,14 +17,14 @@ router = APIRouter(prefix="/arena_challenge", tags=["arena_challenge"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-@router.get("/", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
+@router.get("/all", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
 async def get_all_arena_challenges(db: db_dependency):
     try:
         return db.query(ArenaChallenge).all()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
+@router.get("", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
 async def get_arena_challenge_by_query(
     db: db_dependency,
     from_language: str = Query(..., description="From language"),

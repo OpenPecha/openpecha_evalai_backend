@@ -1,12 +1,13 @@
 from database import Base
 from sqlalchemy import Column, String, DateTime
 import datetime
+import uuid
 
 class TemplateV2(Base):
 
     __tablename__ = "template_v2"
 
-    id = Column(String, primary_key=True, unique=True, nullable=False)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     template_name = Column(String, nullable=False)
     username = Column(String, nullable=False)
     template = Column(String)
