@@ -1,19 +1,18 @@
 from database import Base
-from sqlalchemy import Column
-from token import STRING, DateTime
+from sqlalchemy import Column, String, DateTime
 import datetime
 
 class TemplateV2(Base):
 
     __tablename__ = "template_v2"
 
-    id = Column(STRING, primary_key=True, unique=True, nullable=False)
-    template_name = Column(STRING, nullable=False)
-    username = Column(STRING, nullable=False)
-    template = Column(STRING)
-    text = Column(STRING, nullable=False)
-    input_text = Column(STRING)
-    from_language = Column(STRING, nullable=False)
-    to_language = Column(STRING, nullable=False)
+    id = Column(String, primary_key=True, unique=True, nullable=False)
+    template_name = Column(String, nullable=False)
+    username = Column(String, nullable=False)
+    template = Column(String)
+    text = Column(String, nullable=False)
+    input_text = Column(String)
+    from_language = Column(String, nullable=False)
+    to_language = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
