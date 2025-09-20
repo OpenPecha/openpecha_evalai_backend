@@ -21,3 +21,4 @@ class TemplateV2Create(BaseModel):
     input_text: str
     from_language: str
     to_language: str
+    challenge_name: str
