@@ -12,7 +12,6 @@ class TemplateV2(Base):
     username = Column(String, nullable=False)
     template = Column(String)
     text = Column(String, nullable=False)
-    input_text = Column(String)
     from_language = Column(String, nullable=False)
     to_language = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
