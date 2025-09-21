@@ -7,6 +7,7 @@ import random
 from dotenv import load_dotenv
 import os
 import json
+import difflib
 
 from models.template_v2 import TemplateV2
 
@@ -52,7 +53,50 @@ def generate_translation(db: db_dependency, model: str, template: TemplateV2, in
     is_ucca_present = check_ucca_present(template.template)
     is_gloss_present = check_gloss_present(template.template)
     is_commentaries_present = check_commentaries_present(template.template)
+    is_sanskrit_present = check_sanskrit_present(template.template)
+
+    ucca = None
+    gloss = None
+    commentaries = None
+    sanskrit = None
+
+    commentaries_and_sanskrit = get_commentaries_and_sanskrit(input_text)
         
+
+
+    
+def get_commentaries_and_sanskrit(input_text: str):
+    """
+    Go through every file in the commentaries_and_sanskrit folder and print every object inside it.
+    """
+    commentaries_dir = os.path.join(os.path.dirname(__file__), "..", "commentaries_and_sanskrit")
+    # List all files in the directory
+    try:
+        files = [f for f in os.listdir(commentaries_dir) if f.endswith('.json')]
+    except Exception as e:
+        logger.error(f"Error listing files in directory {commentaries_dir}: {str(e)}")
+        return
+
+    for json_file in files:
+        file_path = os.path.join(commentaries_dir, json_file)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for entry in data:
+                root_display_text = entry.get("root_display_text", "")
+                if is_fuzzy_match(input_text, root_display_text):
+                    return entry
+            
+        except FileNotFoundError:
+            logger.warning(f"Commentary file not found: {file_path}")
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON file: {file_path}")
+        except Exception as e:
+            logger.error(f"Error reading commentary file {file_path}: {str(e)}")
+
+def is_fuzzy_match(input_text: str, root_display_text: str, threshold: float = 0.7) -> bool:
+    similarity = difflib.SequenceMatcher(None, input_text, root_display_text).ratio()
+    return similarity > threshold
 
 def check_ucca_present(template: str):
     return "{ucca}" in template
@@ -62,6 +106,9 @@ def check_gloss_present(template: str):
 
 def check_commentaries_present(template: str):
     return "{commentaries}" in template
+
+def check_sanskrit_present(template: str):
+    return "{sanskrit}" in template
 
 
 

@@ -32,14 +32,27 @@ def get_all_template_v2_by_username(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/create", response_model=TemplateV2Create, status_code=status.HTTP_201_CREATED)
+@router.post("/create", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
 def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
     try:
         new_template_v2 = TemplateV2(**template_v2.model_dump())
         db.add(new_template_v2)
         db.commit()
         db.refresh(new_template_v2)
-        return new_template_v2
+        challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == new_template_v2.challenge_id).first()
+        return TemplateV2Read(
+            id=new_template_v2.id,
+            template_name=new_template_v2.template_name,
+            username=new_template_v2.username,
+            template=new_template_v2.template,
+            challenge_id=challenge.id,
+            text=challenge.text,
+            challenge_name=challenge.challenge_name,
+            from_language=challenge.from_language,
+            to_language=challenge.to_language,
+            created_at=new_template_v2.created_at,
+            updated_at=new_template_v2.updated_at
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
