@@ -7,7 +7,6 @@ class TemplateV2Read(BaseModel):
     username: str
     template: str
     text: str
-    input_text: str
     from_language: str
     to_language: str
     created_at: datetime
