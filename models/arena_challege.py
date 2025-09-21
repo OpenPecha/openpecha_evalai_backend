@@ -1,4 +1,3 @@
-from tokenize import String
 from sqlalchemy import Column, String, DateTime
 from database import Base
 import datetime

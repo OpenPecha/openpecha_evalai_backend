@@ -51,11 +51,19 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
 def generate_translation(db: db_dependency, model: str, template: TemplateV2, input_text: str):
     is_ucca_present = check_ucca_present(template.template)
     is_gloss_present = check_gloss_present(template.template)
-    is_commentary_present = check_commentary_present(template.template)
-    pass
+    is_commentaries_present = check_commentaries_present(template.template)
+        
 
 def check_ucca_present(template: str):
     return "{ucca}" in template
+
+def check_gloss_present(template: str):
+    return "{gloss}" in template
+
+def check_commentaries_present(template: str):
+    return "{commentaries}" in template
+
+
 
 def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""

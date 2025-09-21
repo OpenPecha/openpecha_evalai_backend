@@ -1,3 +1,4 @@
+from models.arena_challege import ArenaChallenge
 from fastapi import APIRouter, Depends, HTTPException, Path, Body, status, Query
 from sqlalchemy.orm import Session
 from typing import Annotated, List
@@ -26,23 +27,12 @@ def get_all_template_v2_by_username(
         response = db.query(TemplateV2).filter(
             (TemplateV2.username == username) & (TemplateV2.challenge_id == challenge_id)
         ).all()
-        return TemplateV2Read(
-            id=response.id,
-            template_name=response.template_name,
-            username=response.username,
-            template=response.template,
-            challenge_id=response.challenge_id,
-            text=response.text,
-            challenge_name=response.challenge_name,
-            from_language=response.from_language,
-            to_language=response.to_language,
-            created_at=response.created_at,
-            updated_at=response.updated_at
-        )
+        return get_template_response_by_username_and_challenge_id(db, response)
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/create", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
+@router.post("/create", response_model=TemplateV2Create, status_code=status.HTTP_201_CREATED)
 def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
     try:
         new_template_v2 = TemplateV2(**template_v2.model_dump())
@@ -52,3 +42,25 @@ def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
         return new_template_v2
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def get_template_response_by_username_and_challenge_id(db: db_dependency, response: List[TemplateV2]):
+    templates = []
+    for template in response:
+        challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+        templates.append(
+            TemplateV2Read(
+                id=template.id,
+                template_name=template.template_name,
+                username=template.username,
+                template=template.template,
+                challenge_id=challenge.id,
+                text=challenge.text,
+                challenge_name=challenge.challenge_name,
+                from_language=challenge.from_language,
+                to_language=challenge.to_language,
+                created_at=template.created_at,
+                updated_at=template.updated_at
+            )
+        )
+    return templates

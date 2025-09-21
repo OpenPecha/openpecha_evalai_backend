@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class TemplateV2Read(BaseModel):
     id: str
@@ -15,6 +16,7 @@ class TemplateV2Read(BaseModel):
     updated_at: datetime
 
 class TemplateV2Create(BaseModel):
+    id: Optional[str] = None
     template_name: str
     username: str
     template: str
