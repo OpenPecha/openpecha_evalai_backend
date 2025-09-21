@@ -7,6 +7,10 @@ class TemplateV2Read(BaseModel):
     username: str
     template: str
     challenge_id: str
+    text: str
+    challenge_name: str
+    from_language: str
+    to_language: str
     created_at: datetime
     updated_at: datetime
 

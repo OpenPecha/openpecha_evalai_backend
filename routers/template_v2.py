@@ -23,9 +23,22 @@ def get_all_template_v2_by_username(
     username: str = Path(..., description="This is the username of the template")
 ):
     try:
-        return db.query(TemplateV2).filter(
+        response = db.query(TemplateV2).filter(
             (TemplateV2.username == username) & (TemplateV2.challenge_id == challenge_id)
         ).all()
+        return TemplateV2Read(
+            id=response.id,
+            template_name=response.template_name,
+            username=response.username,
+            template=response.template,
+            challenge_id=response.challenge_id,
+            text=response.text,
+            challenge_name=response.challenge_name,
+            from_language=response.from_language,
+            to_language=response.to_language,
+            created_at=response.created_at,
+            updated_at=response.updated_at
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -54,6 +54,8 @@ def generate_translation(db: db_dependency, model: str, template: TemplateV2, in
     is_commentary_present = check_commentary_present(template.template)
     pass
 
+def check_ucca_present(template: str):
+    return "{ucca}" in template
 
 def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""
