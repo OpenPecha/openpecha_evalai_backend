@@ -1,7 +1,8 @@
 from database import Base
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, ForeignKey
 import datetime
 import uuid
+from sqlalchemy.orm import relationship
 
 class TemplateV2(Base):
 
@@ -11,9 +12,6 @@ class TemplateV2(Base):
     template_name = Column(String, nullable=False)
     username = Column(String, nullable=False)
     template = Column(String)
-    text = Column(String, nullable=False)
-    from_language = Column(String, nullable=False)
-    to_language = Column(String, nullable=False)
-    challenge_name = Column(String, nullable=False)
+    challenge_id = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
