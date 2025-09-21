@@ -26,7 +26,9 @@ def get_commentaries_and_sanskrit(input_text: str):
                 data = json.load(f)
             for entry in data:
                 root_display_text = entry.get("root_display_text", "")
-                print(root_display_text)
+                for i in entry:
+                    print(i)
+                    print(entry[i])
             
         except FileNotFoundError:
             logger.warning(f"Commentary file not found: {file_path}")

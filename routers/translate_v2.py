@@ -1,3 +1,5 @@
+from operator import ge
+from turtle import ht
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
@@ -7,12 +9,15 @@ import random
 from dotenv import load_dotenv
 import os
 import json
+import requests
 import difflib
 
+from models.arena_challege import ArenaChallenge
 from models.template_v2 import TemplateV2
 
 from schemas.translate_v2 import (
-    TranslateV2Request
+    TranslateV2Request,
+    TranslationResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -21,7 +26,7 @@ router = APIRouter(prefix="/translate_v2", tags=["translate_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-LANGGRAPH_URL = "http://128.0.0.1:8001"
+LANGGRAPH_URL = "http://127.0.0.1:8001"
 
 
 @router.post("", status_code=status.HTTP_200_OK)
@@ -44,8 +49,15 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
     logger.info(f"model_1: {model_1}")
     logger.info(f"model_2: {model_2}")
 
+    
+
     translation_1 = generate_translation(db, model_1, template_1, request.input_text)
     translation_2 = generate_translation(db, model_2, template_2, request.input_text)
+
+    return TranslationResponse(
+        translation_1=translation_1,
+        translation_2=translation_2
+    )
 
 
     
@@ -57,12 +69,100 @@ def generate_translation(db: db_dependency, model: str, template: TemplateV2, in
 
     ucca = None
     gloss = None
-    commentaries = None
-    sanskrit = None
 
     commentaries_and_sanskrit = get_commentaries_and_sanskrit(input_text)
-        
+    if not commentaries_and_sanskrit:
+        raise HTTPException(status_code=400, detail="No commentaries and sanskrit found")
 
+    if is_ucca_present:
+        ucca = get_ucca(input_text, commentaries_and_sanskrit, model)
+        ucca = ucca.get("ucca_graph", None)
+        
+    if is_gloss_present:
+        gloss = get_gloss(input_text, commentaries_and_sanskrit, ucca, model)
+        gloss = gloss.get("glossary", None)
+
+    combo_key = generate_combo_key(is_ucca_present, is_gloss_present, is_commentaries_present, is_sanskrit_present)
+
+    challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+
+    payload = {
+        "combo_key": combo_key,
+        "input": {
+            "source": input_text,
+            "commentaries": [
+                commentaries_and_sanskrit["commentary_1"],
+                commentaries_and_sanskrit["commentary_2"],
+                commentaries_and_sanskrit["commentary_3"]
+            ],
+            "ucca": str(ucca),
+            "gloss": str(gloss),
+            "sanskrit": commentaries_and_sanskrit["sanskrit_text"],
+            "target_language": challenge.to_language
+        },
+        "model_name": model,
+        "model_params": {},
+        "custom_prompt": template.template
+    }
+
+    translation = get_translation(payload)
+
+    return translation
+
+
+def get_translation(payload: dict):
+    try:
+        response = requests.post(f"{LANGGRAPH_URL}/workflow/run", json=payload)
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error generating translation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+def generate_combo_key(is_ucca_present, is_gloss_present, is_commentaries_present, is_sanskrit_present):
+    combo_key = ""
+    if is_ucca_present:
+        combo_key += "ucca"
+    if is_gloss_present:
+        combo_key += "+gloss"
+    if is_commentaries_present:
+        combo_key += "+commentaries"
+    if is_sanskrit_present:
+        combo_key += "+sanskrit"
+    return combo_key
+
+def get_gloss(input_text: str, commentaries_and_sanskrit: dict, ucca: dict, model: str):
+    payload = {
+        "input_text": input_text,
+        "model_name": model,
+        "model_params": {},
+        "ucca_interpretation": str(ucca),
+        "commentary_1": commentaries_and_sanskrit["commentary_1"],
+        "commentary_2": commentaries_and_sanskrit["commentary_2"],
+        "commentary_3": commentaries_and_sanskrit["commentary_3"],
+        "sanskrit_text": commentaries_and_sanskrit["sanskrit_text"]
+    }
+    try:
+        response = requests.post(f"{LANGGRAPH_URL}/gloss/generate", json=payload)
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error generating Gloss: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_ucca(input_text: str, commentaries_and_sanskrit: dict, model: str):
+    payload = {
+        "input_text": input_text,
+        "model_name": model,
+        "commentary_1": commentaries_and_sanskrit["commentary_1"],
+        "commentary_2": commentaries_and_sanskrit["commentary_2"],
+        "commentary_3": commentaries_and_sanskrit["commentary_3"],
+        "sanskrit": commentaries_and_sanskrit["sanskrit_text"]
+    }
+    try:
+        response = requests.post(f"{LANGGRAPH_URL}/ucca/generate", json=payload)
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error generating UCCA: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     
 def get_commentaries_and_sanskrit(input_text: str):
@@ -93,6 +193,8 @@ def get_commentaries_and_sanskrit(input_text: str):
             logger.error(f"Error decoding JSON file: {file_path}")
         except Exception as e:
             logger.error(f"Error reading commentary file {file_path}: {str(e)}")
+    
+    return None
 
 def is_fuzzy_match(input_text: str, root_display_text: str, threshold: float = 0.7) -> bool:
     similarity = difflib.SequenceMatcher(None, input_text, root_display_text).ratio()
@@ -115,24 +217,16 @@ def check_sanskrit_present(template: str):
 def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""
     default_providers = {
-                            "claude-3-5-sonnet-20241022": "anthropic",
-                            "claude-3-7-sonnet-20250219": "anthropic",
-                            "claude-sonnet-4-20250514": "anthropic",
-                            "claude-3-5-haiku-20241022": "anthropic",
-                            "claude-3-opus-20240229": "anthropic",
-                            "gemini-2.5-pro": "google",
-                            "gemini-2.5-flash-thinking": "google",
-                            "gemini-2.5-flash": "google"
-                         }
-    
-    model_providers_env = os.getenv("MODEL_PROVIDERS")
-    if model_providers_env:
-        try:
-            return json.loads(model_providers_env)
-        except json.JSONDecodeError:
-            return default_providers
-    else:
-        return default_providers
+        "claude-3-5-sonnet-20241022": "anthropic",
+        "claude-3-7-sonnet-20250219": "anthropic",
+        "claude-sonnet-4-20250514": "anthropic",
+        "claude-3-5-haiku-20241022": "anthropic",
+        "claude-3-opus-20240229": "anthropic",
+        "gemini-2.5-pro": "google",
+        "gemini-2.5-flash-thinking": "google",
+        "gemini-2.5-flash": "google"
+    }
+    return default_providers
 
 def get_random_template_v2(db: db_dependency, exclude_template_id: List[str]):
     try:
