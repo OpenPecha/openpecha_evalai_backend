@@ -14,5 +14,6 @@ class TemplateV2(Base):
     text = Column(String, nullable=False)
     from_language = Column(String, nullable=False)
     to_language = Column(String, nullable=False)
+    challenge_name = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
