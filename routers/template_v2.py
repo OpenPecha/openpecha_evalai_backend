@@ -19,11 +19,11 @@ db_dependency = Annotated[Session, Depends(get_db)]
 @router.get("/user/{username}", response_model=List[TemplateV2Read], status_code=status.HTTP_200_OK)
 def get_all_template_v2_by_username(
     db: db_dependency, 
-    challenge_name: str = Query(..., description="This is the challenge id of the template"),
+    challenge_id: str = Query(..., description="This is the challenge id of the template"),
     username: str = Path(..., description="This is the username of the template")
 ):
     try:
-        return db.query(TemplateV2).filter(TemplateV2.username == username, TemplateV2.challenge_name == challenge_name).all()
+        return db.query(TemplateV2).filter(TemplateV2.username == username, TemplateV2.id == challenge_id).all()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
