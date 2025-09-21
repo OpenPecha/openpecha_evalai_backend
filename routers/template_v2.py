@@ -23,7 +23,7 @@ def get_all_template_v2_by_username(db: db_dependency, username: str = Path(...,
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/create", response_model=TemplateV2Create, status_code=status.HTTP_201_CREATED)
+@router.post("/create", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
 def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
     try:
         new_template_v2 = TemplateV2(**template_v2.model_dump())
