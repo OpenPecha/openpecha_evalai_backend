@@ -20,6 +20,8 @@ router = APIRouter(prefix="/translate_v2", tags=["translate_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+LANGGRAPH_URL = "http://128.0.0.1:8001"
+
 
 @router.post("", status_code=status.HTTP_200_OK)
 def translate_v2(db: db_dependency, request: TranslateV2Request):
@@ -47,6 +49,9 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
 
     
 def generate_translation(db: db_dependency, model: str, template: TemplateV2, input_text: str):
+    is_ucca_present = check_ucca_present(template.template)
+    is_gloss_present = check_gloss_present(template.template)
+    is_commentary_present = check_commentary_present(template.template)
     pass
 
 
