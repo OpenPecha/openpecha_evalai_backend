@@ -95,7 +95,7 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
 
 @router.put("/update_battle_winner", status_code=status.HTTP_200_OK)
 def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
-    if request.winner_id is not None:
+    if request.result is not None:
         challenger_1 = db.query(ArenaRating).filter(ArenaRating.id == request.id_1).first()
         challenger_2 = db.query(ArenaRating).filter(ArenaRating.id == request.id_2).first()
 
@@ -110,7 +110,7 @@ def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
         # Update the battle result with the winner
         battle_result = db.query(BattleResult).filter(BattleResult.id == request.battle_result_id).first()
         if battle_result:
-            battle_result.winner_id = request.winner_id
+            battle_result.result = request.result.value  # Convert enum to string value
         
         try:
             db.commit()
@@ -121,24 +121,24 @@ def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
             logger.error(f"Error updating battle winner: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
     else:
-        raise HTTPException(status_code=400, detail="Winner ID is required")
+        raise HTTPException(status_code=400, detail="Result is required")
 
 def get_new_rating_for_both_challengers(challenger_1_score: float, challenger_2_score: float, request: UpdateBattleWinnerRequest):
      # Update ELO ratings based on battle result
-    if request.winner_id == ResultType.A:
+    if request.result == ResultType.A:
         # Challenger 1 wins
         new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="win")
-    elif request.winner_id == ResultType.B:
+    elif request.result == ResultType.B:
         # Challenger 2 wins
         new_rating_2, new_rating_1 = calculate_elo_rating(challenger_2_score, challenger_1_score, result="win")
-    elif request.winner_id == ResultType.DRAW:
+    elif request.result == ResultType.DRAW:
         # Draw
         new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="draw")
-    elif request.winner_id == ResultType.BOTH_WORST:
+    elif request.result == ResultType.BOTH_WORST:
         # Both performed worst - special case where both lose rating
         new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="both_worst")
     else:
-        raise HTTPException(status_code=400, detail="Invalid winner_id")
+        raise HTTPException(status_code=400, detail="Invalid result")
     
     return new_rating_1, new_rating_2
 

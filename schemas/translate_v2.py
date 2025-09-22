@@ -26,5 +26,4 @@ class UpdateBattleWinnerRequest(BaseModel):
     battle_result_id: str
     id_1: str
     id_2: str
-    winner_id: ResultType
-    is_tie: bool = False
+    result: ResultType
