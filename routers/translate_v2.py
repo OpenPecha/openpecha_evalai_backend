@@ -1,12 +1,9 @@
-from operator import ge
-from turtle import ht
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from typing import Annotated, List
 import logging
 import random
-from dotenv import load_dotenv
 import os
 import json
 import requests
@@ -18,7 +15,9 @@ from models.arena_rating import ArenaRating, BattleResult
 
 from schemas.translate_v2 import (
     TranslateV2Request,
-    TranslationResponse
+    TranslationResponse,
+    UpdateBattleWinnerRequest,
+    ResultType
 )
 
 logger = logging.getLogger(__name__)
@@ -73,7 +72,7 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
         score = 0
     )
 
-    write_battle_result(
+    battle_result = write_battle_result(
         db,
         template_1_id = random_template_id_1,
         template_2_id = random_template_id_2,
@@ -85,6 +84,7 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
     )
 
     return TranslationResponse(
+        battle_result_id=battle_result.id,
         id_1=challenger_1.id,
         translation_1=translation_1,
         model_1=model_1,
@@ -92,6 +92,105 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
         id_2=challenger_2.id,
         model_2=model_2
     )
+
+@router.put("/update_battle_winner", status_code=status.HTTP_200_OK)
+def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
+    if request.winner_id is not None:
+        challenger_1 = db.query(ArenaRating).filter(ArenaRating.id == request.id_1).first()
+        challenger_2 = db.query(ArenaRating).filter(ArenaRating.id == request.id_2).first()
+
+        challenger_1_score = challenger_1.score
+        challenger_2_score = challenger_2.score
+
+        new_rating_1, new_rating_2 = get_new_rating_for_both_challengers(challenger_1_score, challenger_2_score, request)
+
+        challenger_1.score = new_rating_1
+        challenger_2.score = new_rating_2
+        
+        # Update the battle result with the winner
+        battle_result = db.query(BattleResult).filter(BattleResult.id == request.battle_result_id).first()
+        if battle_result:
+            battle_result.winner_id = request.winner_id
+        
+        try:
+            db.commit()
+            logger.info(f"Updated ELO ratings - Challenger 1: {challenger_1_score} -> {new_rating_1}, Challenger 2: {challenger_2_score} -> {new_rating_2}")
+            return {"message": "Battle winner updated successfully", "new_ratings": {"id_1": new_rating_1, "id_2": new_rating_2}}
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error updating battle winner: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        raise HTTPException(status_code=400, detail="Winner ID is required")
+
+def get_new_rating_for_both_challengers(challenger_1_score: float, challenger_2_score: float, request: UpdateBattleWinnerRequest):
+     # Update ELO ratings based on battle result
+    if request.winner_id == ResultType.A:
+        # Challenger 1 wins
+        new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="win")
+    elif request.winner_id == ResultType.B:
+        # Challenger 2 wins
+        new_rating_2, new_rating_1 = calculate_elo_rating(challenger_2_score, challenger_1_score, result="win")
+    elif request.winner_id == ResultType.DRAW:
+        # Draw
+        new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="draw")
+    elif request.winner_id == ResultType.BOTH_WORST:
+        # Both performed worst - special case where both lose rating
+        new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="both_worst")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid winner_id")
+    
+    return new_rating_1, new_rating_2
+
+
+def calculate_elo_rating(rating_a: float, rating_b: float, result: str, k_factor: int = 32) -> tuple[float, float]:
+    """
+    Calculate new ELO ratings for two players based on battle result.
+    
+    Args:
+        rating_a (float): Current ELO rating of player A
+        rating_b (float): Current ELO rating of player B
+        result (str): Battle result - "win" (A wins), "draw", or "both_worst"
+        k_factor (int): K-factor for ELO calculation (default: 32)
+    
+    Returns:
+        tuple[float, float]: New ratings for player A and player B
+    """
+    # Calculate expected scores
+    expected_a = 1 / (1 + 10 ** ((rating_b - rating_a) / 400))
+    expected_b = 1 / (1 + 10 ** ((rating_a - rating_b) / 400))
+    
+    # Determine actual scores based on result
+    if result == "win":
+        # Player A wins
+        actual_a = 1.0
+        actual_b = 0.0
+    elif result == "draw":
+        # Draw
+        actual_a = 0.5
+        actual_b = 0.5
+    elif result == "both_worst":
+        # Both performed worst - both lose rating as if they lost to a stronger opponent
+        # This is a special case where both players are penalized
+        actual_a = 0.0
+        actual_b = 0.0
+        # Adjust expected scores to make the penalty more significant
+        expected_a = 0.7  # Assume they were expected to do better
+        expected_b = 0.7
+    else:
+        raise ValueError(f"Invalid result: {result}. Must be 'win', 'draw', or 'both_worst'")
+    
+    # Calculate new ratings
+    new_rating_a = rating_a + k_factor * (actual_a - expected_a)
+    new_rating_b = rating_b + k_factor * (actual_b - expected_b)
+    
+    # Ensure ratings don't go below a minimum threshold (e.g., 100)
+    new_rating_a = max(100, new_rating_a)
+    new_rating_b = max(100, new_rating_b)
+    
+    return round(new_rating_a, 2), round(new_rating_b, 2)
+
+
 
 def write_battle_result(db: db_dependency, template_1_id: str, template_2_id: str, input_text: str, output_text_1: dict, output_text_2: dict, model_1: str, model_2: str):
     battle_result = BattleResult(
@@ -304,7 +403,8 @@ def get_random_template_v2(db: db_dependency, exclude_template_id: List[str]):
     try:
         templates = db.query(TemplateV2).filter(TemplateV2.id.not_in(exclude_template_id)).all()
         return random.choice(templates).id
-    except:
+    except Exception as e:
+        logger.error(f"Error getting random template: {str(e)}")
         return None
 
 def get_random_model_v2():
