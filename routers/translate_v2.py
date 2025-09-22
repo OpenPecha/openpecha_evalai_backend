@@ -93,13 +93,13 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
         model_2=model_2
     )
 
-def write_battle_result(db: db_dependency, template_1_id: str, template_2_id: str, input_text: str, output_text_1: str, output_text_2: str, model_1: str, model_2: str):
+def write_battle_result(db: db_dependency, template_1_id: str, template_2_id: str, input_text: str, output_text_1: dict, output_text_2: dict, model_1: str, model_2: str):
     battle_result = BattleResult(
         template_A_id = template_1_id,
         template_B_id = template_2_id,
         input_text = input_text,
-        output_text_A = output_text_1,
-        output_text_B = output_text_2,
+        output_text_A = str(output_text_1),
+        output_text_B = str(output_text_2),
         model_A = model_1,
         model_B = model_2
     )
@@ -114,12 +114,12 @@ def write_battle_result(db: db_dependency, template_1_id: str, template_2_id: st
         logger.error(f"Error writing to battle result: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def write_to_arena_rating(db: db_dependency, template_id: str, challenge_id: str, input_text: str, output_text: str, score: int):
+def write_to_arena_rating(db: db_dependency, template_id: str, challenge_id: str, input_text: str, output_text: dict, score: int):
     arena_rating = ArenaRating(
         template_id = template_id,
         challenge_id = challenge_id,
         input_text = input_text,
-        output_text = output_text,
+        output_text = str(output_text),
         score = score
     )
     try:
