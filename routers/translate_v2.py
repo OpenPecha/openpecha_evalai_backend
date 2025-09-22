@@ -255,7 +255,11 @@ def generate_translation(db: db_dependency, model: str, template: TemplateV2, in
 
     combo_key = generate_combo_key(is_ucca_present, is_gloss_present, is_commentaries_present, is_sanskrit_present)
 
-    challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+    try:
+        challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+    except Exception as e:
+        logger.error(f"Error getting challenge: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     payload = {
         "combo_key": combo_key,
