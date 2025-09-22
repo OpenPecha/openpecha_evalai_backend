@@ -14,6 +14,7 @@ import difflib
 
 from models.arena_challege import ArenaChallenge
 from models.template_v2 import TemplateV2
+from models.arena_rating import ArenaRating, BattleResult
 
 from schemas.translate_v2 import (
     TranslateV2Request,
@@ -49,18 +50,89 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
     logger.info(f"model_1: {model_1}")
     logger.info(f"model_2: {model_2}")
 
-    
-
     translation_1 = generate_translation(db, model_1, template_1, request.input_text)
+    logger.info(f"translation_1: {translation_1}")
     translation_2 = generate_translation(db, model_2, template_2, request.input_text)
+    logger.info(f"translation_2: {translation_2}")
 
-    return TranslationResponse(
-        translation_1=translation_1,
-        translation_2=translation_2
+    challenger_1 = write_to_arena_rating(
+        db, 
+        template_id = random_template_id_1, 
+        challenge_id =request.challenge_id,
+        input_text = request.input_text,
+        output_text = translation_1,
+        score = 0
     )
 
+    challenger_2 = write_to_arena_rating(
+        db,
+        template_id = random_template_id_2,
+        challenge_id = request.challenge_id,
+        input_text = request.input_text,
+        output_text = translation_2,
+        score = 0
+    )
 
-    
+    write_battle_result(
+        db,
+        template_1_id = random_template_id_1,
+        template_2_id = random_template_id_2,
+        input_text = request.input_text,
+        output_text_1 = translation_1,
+        output_text_2 = translation_2,
+        model_1 = model_1,
+        model_2 = model_2,
+    )
+
+    return TranslationResponse(
+        id_1=challenger_1.id,
+        translation_1=translation_1,
+        model_1=model_1,
+        translation_2=translation_2,
+        id_2=challenger_2.id,
+        model_2=model_2
+    )
+
+def write_battle_result(db: db_dependency, template_1_id: str, template_2_id: str, input_text: str, output_text_1: str, output_text_2: str, model_1: str, model_2: str):
+    battle_result = BattleResult(
+        template_A_id = template_1_id,
+        template_B_id = template_2_id,
+        input_text = input_text,
+        output_text_A = output_text_1,
+        output_text_B = output_text_2,
+        model_A = model_1,
+        model_B = model_2
+    )
+    try:
+        db.add(battle_result)
+        db.commit()
+        db.refresh(battle_result)
+        logger.info(f"Written to battle result: {battle_result}")
+        return battle_result
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error writing to battle result: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def write_to_arena_rating(db: db_dependency, template_id: str, challenge_id: str, input_text: str, output_text: str, score: int):
+    arena_rating = ArenaRating(
+        template_id = template_id,
+        challenge_id = challenge_id,
+        input_text = input_text,
+        output_text = output_text,
+        score = score
+    )
+    try:
+        db.add(arena_rating)
+        db.commit()
+        db.refresh(arena_rating)
+        logger.info(f"Written to arena rating: {arena_rating}")
+        return arena_rating
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error writing to arena rating: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
 def generate_translation(db: db_dependency, model: str, template: TemplateV2, input_text: str):
     is_ucca_present = check_ucca_present(template.template)
     is_gloss_present = check_gloss_present(template.template)
