@@ -12,6 +12,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import aiohttp
+import os
 
 from models.arena_challege import ArenaChallenge
 from models.template_v2 import TemplateV2
@@ -36,7 +37,7 @@ router = APIRouter(prefix="/translate_v2", tags=["translate_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-LANGGRAPH_URL = "http://127.0.0.1:8001"
+LANGGRAPH_URL = os.getenv("LANGGRAPH_URL", "http://127.0.0.1:8001")
 
 _commentary_cache: Dict[str, List[dict]] = {}
 
