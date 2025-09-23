@@ -445,6 +445,7 @@ async def generate_translation_async(db: db_dependency, model: str, template: Te
     elif is_gloss_present:
         tasks.append(("gloss", get_gloss_async(input_text, commentaries_and_sanskrit, {}, model)))
 
+
     # Execute tasks in parallel
     if tasks:
         task_results = await asyncio.gather(*[task for _, task in tasks])
@@ -452,8 +453,10 @@ async def generate_translation_async(db: db_dependency, model: str, template: Te
         for i, (task_name, _) in enumerate(tasks):
             if task_name == "ucca":
                 ucca = task_results[i].get("ucca_graph", None)
+                logger.info(f"ucca: {ucca}")
             elif task_name == "gloss":
                 gloss = task_results[i].get("glossary", None)
+                logger.info(f"gloss: {gloss}")
     
     # Handle gloss if it depends on ucca (sequential execution)
     if is_gloss_present and is_ucca_present and gloss is None:
