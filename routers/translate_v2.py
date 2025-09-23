@@ -347,7 +347,8 @@ def write_to_battle_result(db: db_dependency, random_template_id_1: str, random_
         output_text_A=str(translation_1),
         output_text_B=str(translation_2),
         model_A=model_1,
-        model_B=model_2
+        model_B=model_2,
+        challenge_id=challenge_id
     )
 
     try:

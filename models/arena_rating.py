@@ -68,6 +68,7 @@ class BattleResult(Base):
     output_text_B = Column(String)
     model_A = Column(String, nullable=False)
     model_B = Column(String, nullable=False)
+    challenge_id = Column(String, nullable=False)
     winner_id = Column(String, default=None, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
