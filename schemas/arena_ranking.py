@@ -8,6 +8,7 @@ class RankingBy(Enum):
     MODEL = "model"
 
 class ChallengeDetails(BaseModel):
+    challenge_id: str
     challenge_name: str
     text: str
     from_language: str

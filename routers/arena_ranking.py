@@ -49,22 +49,44 @@ def get_arena_ranking_by_challenge_id(
 
     try:
         if ranking_by == RankingBy.COMBINED:
-            arena_ranking_all = db.query(EloRatingByModelAndTemplate).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).all()
+            arena_ranking_db = db.query(EloRatingByModelAndTemplate).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).all()
+            arena_ranking_list = [
+                ArenaRanking(
+                    template_name=ranking.template_id,
+                    model_name=ranking.model_name,
+                    elo_rating=ranking.elo_rating
+                ) for ranking in arena_ranking_db
+            ]
         elif ranking_by == RankingBy.TEMPLATE:
-            arena_ranking_all = db.query(EloRatingByTemplate).filter(EloRatingByTemplate.challenge_id == challenge_id).all()
+            arena_ranking_db = db.query(EloRatingByTemplate).filter(EloRatingByTemplate.challenge_id == challenge_id).all()
+            arena_ranking_list = [
+                ArenaRanking(
+                    template_name=ranking.template_id,
+                    model_name=None,
+                    elo_rating=ranking.elo_rating
+                ) for ranking in arena_ranking_db
+            ]
         elif ranking_by == RankingBy.MODEL:
-            arena_ranking_all = db.query(EloRatingByModel).filter(EloRatingByModel.challenge_id == challenge_id).all()
+            arena_ranking_db = db.query(EloRatingByModel).filter(EloRatingByModel.challenge_id == challenge_id).all()
+            arena_ranking_list = [
+                ArenaRanking(
+                    template_name=None,
+                    model_name=ranking.model_name,
+                    elo_rating=ranking.elo_rating
+                ) for ranking in arena_ranking_db
+            ]
 
         challenge_detail = db.query(ArenaChallenge).filter(ArenaChallenge.id == challenge_id).first()
 
         response = ArenaRankingAll(
             challenge_details=ChallengeDetails(
+                challenge_id=challenge_id,
                 challenge_name=challenge_detail.challenge_name,
                 text=challenge_detail.text,
                 from_language=challenge_detail.from_language,
                 to_language=challenge_detail.to_language
             ),
-            arena_ranking=arena_ranking_all
+            arena_ranking=arena_ranking_list
         )
         
         return response
@@ -77,6 +99,7 @@ def generate_ranking_all_response(challenge_details_dict: Dict[str, ChallengeDet
     for challenge_id, ranking in ranking_by_challenge_id.items():
         challenge_details = challenge_details_dict[challenge_id]
         challenge_details_model = ChallengeDetails(
+            challenge_id=challenge_id,
             challenge_name=challenge_details["challenge_name"],
             text=challenge_details["text"],
             from_language=challenge_details["from_language"],

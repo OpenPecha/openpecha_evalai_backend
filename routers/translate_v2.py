@@ -100,7 +100,7 @@ def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
     
     try:
         battle_details = db.query(BattleResult).filter(BattleResult.id == request.battle_result_id).first()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=404, detail="Battle result not found")
 
     template_1_id = battle_details.template_A_id
@@ -186,23 +186,23 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
             )
             db_add_list.append(elo_rating_by_model_2)
         if elo_rating_1_by_template_and_model is None:
-            elo_rating_1_by_model_and_template = EloRatingByModelAndTemplate(
+            elo_rating_1_by_template_and_model = EloRatingByModelAndTemplate(
                 model_name=model_1,
                 template_id=template_1_id,
                 challenge_id=challenge_id,
                 input_text=input_text,
                 output_text=output_text_1,
             )
-            db_add_list.append(elo_rating_1_by_model_and_template)
+            db_add_list.append(elo_rating_1_by_template_and_model)
         if elo_rating_2_by_template_and_model is None:
-            elo_rating_2_by_model_and_template = EloRatingByModelAndTemplate(
+            elo_rating_2_by_template_and_model = EloRatingByModelAndTemplate(
                 model_name=model_2,
                 template_id=template_2_id,
                 challenge_id=challenge_id,
                 input_text=input_text,
                 output_text=output_text_2,
             )
-            db_add_list.append(elo_rating_2_by_model_and_template)
+            db_add_list.append(elo_rating_2_by_template_and_model)
         
         db.add_all(db_add_list)
         db.commit()
@@ -210,10 +210,10 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
         db.refresh(elo_rating_by_template_2)
         db.refresh(elo_rating_by_model_1)
         db.refresh(elo_rating_by_model_2)
-        db.refresh(elo_rating_1_by_model_and_template)
-        db.refresh(elo_rating_2_by_model_and_template)
+        db.refresh(elo_rating_1_by_template_and_model)
+        db.refresh(elo_rating_2_by_template_and_model)
 
-        logger.info(f"Batch inserted: elo_rating_by_template_1={elo_rating_by_template_1.id}, elo_rating_by_template_2={elo_rating_by_template_2.id}, elo_rating_by_model_1={elo_rating_by_model_1.id}, elo_rating_by_model_2={elo_rating_by_model_2.id}, elo_rating_1_by_model_and_template={elo_rating_1_by_model_and_template.id}, elo_rating_2_by_model_and_template={elo_rating_2_by_model_and_template.id}")
+        logger.info(f"Batch inserted: elo_rating_by_template_1={elo_rating_by_template_1.id}, elo_rating_by_template_2={elo_rating_by_template_2.id}, elo_rating_by_model_1={elo_rating_by_model_1.id}, elo_rating_by_model_2={elo_rating_by_model_2.id}, elo_rating_1_by_template_and_model={elo_rating_1_by_template_and_model.id}, elo_rating_2_by_template_and_model={elo_rating_2_by_template_and_model.id}")
 
         new_rating_by_template_1, new_rating_by_template_2 = get_new_rating_for_both_challengers(
             elo_rating_by_template_1.elo_rating, 
@@ -227,9 +227,9 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
             result
         )
         
-        new_rating_1_by_model_and_template, new_rating_2_by_model_and_template = get_new_rating_for_both_challengers(
-            elo_rating_1_by_model_and_template.elo_rating, 
-            elo_rating_2_by_model_and_template.elo_rating, 
+        new_rating_1_by_template_and_model, new_rating_2_by_template_and_model = get_new_rating_for_both_challengers(
+            elo_rating_1_by_template_and_model.elo_rating, 
+            elo_rating_2_by_template_and_model.elo_rating, 
             result
         )
 
@@ -237,18 +237,20 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
         elo_rating_by_template_2.elo_rating = new_rating_by_template_2
         elo_rating_by_model_1.elo_rating = new_rating_by_model_1
         elo_rating_by_model_2.elo_rating = new_rating_by_model_2
-        elo_rating_1_by_model_and_template.elo_rating = new_rating_1_by_model_and_template
-        elo_rating_2_by_model_and_template.elo_rating = new_rating_2_by_model_and_template
+        elo_rating_1_by_template_and_model.elo_rating = new_rating_1_by_template_and_model
+        elo_rating_2_by_template_and_model.elo_rating = new_rating_2_by_template_and_model
         
         db.commit()
         db.refresh(elo_rating_by_template_1)
         db.refresh(elo_rating_by_template_2)
         db.refresh(elo_rating_by_model_1)
         db.refresh(elo_rating_by_model_2)
-        db.refresh(elo_rating_1_by_model_and_template)
-        db.refresh(elo_rating_2_by_model_and_template)
+        db.refresh(elo_rating_1_by_template_and_model)
+        db.refresh(elo_rating_2_by_template_and_model)
 
-        logger.info(f"Batch updated: elo_rating_by_template_1={elo_rating_by_template_1.elo_rating}, elo_rating_by_template_2={elo_rating_by_template_2.elo_rating}, elo_rating_by_model_1={elo_rating_by_model_1.elo_rating}, elo_rating_by_model_2={elo_rating_by_model_2.elo_rating}, elo_rating_1_by_model_and_template={elo_rating_1_by_model_and_template.elo_rating}, elo_rating_2_by_model_and_template={elo_rating_2_by_model_and_template.elo_rating}")
+        logger.info(f"Batch updated: elo_rating_by_template_1={elo_rating_by_template_1.elo_rating}, elo_rating_by_template_2={elo_rating_by_template_2.elo_rating}, elo_rating_by_model_1={elo_rating_by_model_1.elo_rating}, elo_rating_by_model_2={elo_rating_by_model_2.elo_rating}, elo_rating_1_by_template_and_model={elo_rating_1_by_template_and_model.elo_rating}, elo_rating_2_by_template_and_model={elo_rating_2_by_template_and_model.elo_rating}")
+
+        return "Success"
 
     except Exception as e:
         db.rollback()
@@ -258,18 +260,18 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
     
 
 
-def get_new_rating_for_both_challengers(challenger_1_score: float, challenger_2_score: float, request: UpdateBattleWinnerRequest):
+def get_new_rating_for_both_challengers(challenger_1_score: float, challenger_2_score: float, result: ResultType):
      # Update ELO ratings based on battle result
-    if request.result == ResultType.A:
+    if result == ResultType.A:
         # Challenger 1 wins
         new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="win")
-    elif request.result == ResultType.B:
+    elif result == ResultType.B:
         # Challenger 2 wins
         new_rating_2, new_rating_1 = calculate_elo_rating(challenger_2_score, challenger_1_score, result="win")
-    elif request.result == ResultType.DRAW:
+    elif result == ResultType.DRAW:
         # Draw
         new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="draw")
-    elif request.result == ResultType.BOTH_WORST:
+    elif result == ResultType.BOTH_WORST:
         # Both performed worst - special case where both lose rating
         new_rating_1, new_rating_2 = calculate_elo_rating(challenger_1_score, challenger_2_score, result="both_worst")
     else:
