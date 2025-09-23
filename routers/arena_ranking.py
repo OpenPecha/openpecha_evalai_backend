@@ -52,7 +52,7 @@ def get_arena_ranking_by_challenge_id(
             arena_ranking_db = db.query(EloRatingByModelAndTemplate).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).all()
             arena_ranking_list = [
                 ArenaRanking(
-                    template_name=ranking.template_id,
+                    template_name=ranking.template_name,
                     model_name=ranking.model_name,
                     elo_rating=ranking.elo_rating
                 ) for ranking in arena_ranking_db
@@ -61,7 +61,7 @@ def get_arena_ranking_by_challenge_id(
             arena_ranking_db = db.query(EloRatingByTemplate).filter(EloRatingByTemplate.challenge_id == challenge_id).all()
             arena_ranking_list = [
                 ArenaRanking(
-                    template_name=ranking.template_id,
+                    template_name=ranking.template_name,
                     model_name=None,
                     elo_rating=ranking.elo_rating
                 ) for ranking in arena_ranking_db
@@ -108,7 +108,7 @@ def generate_ranking_all_response(challenge_details_dict: Dict[str, ChallengeDet
         arena_ranking_model = []
         for ranking in ranking:
             arena_ranking_model.append(ArenaRanking(
-                template_name=ranking.template_id,
+                template_name=ranking.template_name,
                 model_name=ranking.model_name,
                 elo_rating=ranking.elo_rating
             ))
