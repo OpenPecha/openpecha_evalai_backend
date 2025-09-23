@@ -1,17 +1,27 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from typing import Annotated, List
+from typing import Annotated, List, Dict
 import logging
 import random
 import os
 import json
 import requests
 import difflib
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import functools
+import aiohttp
 
 from models.arena_challege import ArenaChallenge
 from models.template_v2 import TemplateV2
-from models.arena_rating import ArenaRating, BattleResult
+from models.arena_rating import (
+    ArenaRating, 
+    BattleResult,
+    EloRatingByTemplate,
+    EloRatingByModel,
+    EloRatingByModelAndTemplate
+)
 
 from schemas.translate_v2 import (
     TranslateV2Request,
@@ -28,9 +38,11 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 LANGGRAPH_URL = "http://127.0.0.1:8001"
 
+_commentary_cache: Dict[str, List[dict]] = {}
+
 
 @router.post("", status_code=status.HTTP_200_OK)
-def translate_v2(db: db_dependency, request: TranslateV2Request):
+async def translate_v2(db: db_dependency, request: TranslateV2Request):
     random_template_id_1 = request.template_id if request.template_id else get_random_template_v2(db, [])
     random_template_id_2 = get_random_template_v2(db, [random_template_id_1])
 
@@ -49,79 +61,202 @@ def translate_v2(db: db_dependency, request: TranslateV2Request):
     logger.info(f"model_1: {model_1}")
     logger.info(f"model_2: {model_2}")
 
-    translation_1 = generate_translation(db, model_1, template_1, request.input_text)
+    async with asyncio.TaskGroup() as tg:
+        translation_1_task = tg.create_task(generate_translation_async(db, model_1, template_1, request.input_text))
+        translation_2_task = tg.create_task(generate_translation_async(db, model_2, template_2, request.input_text))
+    
+    translation_1 = translation_1_task.result()
+    translation_2 = translation_2_task.result()
+    
     logger.info(f"translation_1: {translation_1}")
-    translation_2 = generate_translation(db, model_2, template_2, request.input_text)
     logger.info(f"translation_2: {translation_2}")
 
-    challenger_1 = write_to_arena_rating(
-        db, 
-        template_id = random_template_id_1, 
-        challenge_id =request.challenge_id,
-        input_text = request.input_text,
-        output_text = translation_1,
-        score = 0
-    )
 
-    challenger_2 = write_to_arena_rating(
+    battle_result_id = write_to_battle_result(
         db,
-        template_id = random_template_id_2,
-        challenge_id = request.challenge_id,
-        input_text = request.input_text,
-        output_text = translation_2,
-        score = 0
-    )
-
-    battle_result = write_battle_result(
-        db,
-        template_1_id = random_template_id_1,
-        template_2_id = random_template_id_2,
-        input_text = request.input_text,
-        output_text_1 = translation_1,
-        output_text_2 = translation_2,
-        model_1 = model_1,
-        model_2 = model_2,
+        random_template_id_1,
+        random_template_id_2,
+        request.challenge_id,
+        request.input_text,
+        translation_1,
+        translation_2,
+        model_1,
+        model_2
     )
 
     return TranslationResponse(
-        battle_result_id=battle_result.id,
-        id_1=challenger_1.id,
+        battle_result_id=battle_result_id,
+        id_1=random_template_id_1,
         translation_1=translation_1,
         model_1=model_1,
         translation_2=translation_2,
-        id_2=challenger_2.id,
+        id_2=random_template_id_2,
         model_2=model_2
     )
 
+
 @router.put("/update_battle_winner", status_code=status.HTTP_200_OK)
 def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
-    if request.result is not None:
-        challenger_1 = db.query(ArenaRating).filter(ArenaRating.id == request.id_1).first()
-        challenger_2 = db.query(ArenaRating).filter(ArenaRating.id == request.id_2).first()
+    
+    try:
+        battle_details = db.query(BattleResult).filter(BattleResult.id == request.battle_result_id).first()
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Battle result not found")
 
-        challenger_1_score = challenger_1.score
-        challenger_2_score = challenger_2.score
+    template_1_id = battle_details.template_A_id
+    template_2_id = battle_details.template_B_id
+    
+    model_1 = battle_details.model_A
+    model_2 = battle_details.model_B
 
-        new_rating_1, new_rating_2 = get_new_rating_for_both_challengers(challenger_1_score, challenger_2_score, request)
+    challenge_id = battle_details.challenge_id
 
-        challenger_1.score = new_rating_1
-        challenger_2.score = new_rating_2
+    input_text = battle_details.input_text
+    output_text_1 = battle_details.output_text_A
+    output_text_2 = battle_details.output_text_B
+
+    calculate_and_store_elo_rating(
+        db,
+        template_1_id,
+        template_2_id,
+        model_1,
+        model_2,
+        challenge_id,
+        input_text,
+        output_text_1,
+        output_text_2,
+        request.result
+    )
+
+def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, template_2_id: str, model_1: str, model_2: str, challenge_id: str, input_text: str, output_text_1: str, output_text_2: str, result: ResultType):
+
+    try:
+        elo_rating_by_template_1 = db.query(EloRatingByTemplate).filter(
+            (EloRatingByTemplate.template_id == template_1_id) & (EloRatingByTemplate.challenge_id == challenge_id)
+        ).first()
+        elo_rating_by_template_2 = db.query(EloRatingByTemplate).filter(
+            (EloRatingByTemplate.template_id == template_2_id) & (EloRatingByTemplate.challenge_id == challenge_id)
+        ).first()
+        elo_rating_by_model_1 = db.query(EloRatingByModel).filter(
+            (EloRatingByModel.model_name == model_1) & (EloRatingByModel.challenge_id == challenge_id)
+            ).first()
+        elo_rating_by_model_2 = db.query(EloRatingByModel).filter(
+            (EloRatingByModel.model_name == model_2) & (EloRatingByModel.challenge_id == challenge_id)
+            ).first()
         
-        # Update the battle result with the winner
-        battle_result = db.query(BattleResult).filter(BattleResult.id == request.battle_result_id).first()
-        if battle_result:
-            battle_result.result = request.result.value  # Convert enum to string value
+        elo_rating_1_by_template_and_model = db.query(EloRatingByModelAndTemplate).filter(
+            (EloRatingByModelAndTemplate.model_name == model_1) & (EloRatingByModelAndTemplate.template_id == template_1_id) & (EloRatingByModelAndTemplate.challenge_id == challenge_id)
+            ).first()
+        elo_rating_2_by_template_and_model = db.query(EloRatingByModelAndTemplate).filter(
+            (EloRatingByModelAndTemplate.model_name == model_2) & (EloRatingByModelAndTemplate.template_id == template_2_id) & (EloRatingByModelAndTemplate.challenge_id == challenge_id)
+            ).first()
+
+        db_add_list = []
+
+        if elo_rating_by_template_1 is None:
+            elo_rating_by_template_1 = EloRatingByTemplate(
+                template_id=template_1_id,
+                challenge_id=challenge_id,
+                input_text=input_text,
+                output_text=output_text_1,
+            )
+            db_add_list.append(elo_rating_by_template_1)
+        if elo_rating_by_template_2 is None:
+            elo_rating_by_template_2 = EloRatingByTemplate(
+                template_id=template_2_id,
+                challenge_id=challenge_id,
+                input_text=input_text,
+                output_text=output_text_2,
+            )
+            db_add_list.append(elo_rating_by_template_2)
+        if elo_rating_by_model_1 is None:
+            elo_rating_by_model_1 = EloRatingByModel(
+                model_name=model_1,
+                challenge_id=challenge_id,
+                input_text=input_text,
+                output_text=output_text_1,
+            )
+            db_add_list.append(elo_rating_by_model_1)
+        if elo_rating_by_model_2 is None:
+            elo_rating_by_model_2 = EloRatingByModel(
+                model_name=model_2,
+                challenge_id=challenge_id,
+                input_text=input_text,
+                output_text=output_text_2,
+            )
+            db_add_list.append(elo_rating_by_model_2)
+        if elo_rating_1_by_template_and_model is None:
+            elo_rating_1_by_model_and_template = EloRatingByModelAndTemplate(
+                model_name=model_1,
+                template_id=template_1_id,
+                challenge_id=challenge_id,
+                input_text=input_text,
+                output_text=output_text_1,
+            )
+            db_add_list.append(elo_rating_1_by_model_and_template)
+        if elo_rating_2_by_template_and_model is None:
+            elo_rating_2_by_model_and_template = EloRatingByModelAndTemplate(
+                model_name=model_2,
+                template_id=template_2_id,
+                challenge_id=challenge_id,
+                input_text=input_text,
+                output_text=output_text_2,
+            )
+            db_add_list.append(elo_rating_2_by_model_and_template)
         
-        try:
-            db.commit()
-            logger.info(f"Updated ELO ratings - Challenger 1: {challenger_1_score} -> {new_rating_1}, Challenger 2: {challenger_2_score} -> {new_rating_2}")
-            return {"message": "Battle winner updated successfully", "new_ratings": {"id_1": new_rating_1, "id_2": new_rating_2}}
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Error updating battle winner: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    else:
-        raise HTTPException(status_code=400, detail="Result is required")
+        db.add_all(db_add_list)
+        db.commit()
+        db.refresh(elo_rating_by_template_1)
+        db.refresh(elo_rating_by_template_2)
+        db.refresh(elo_rating_by_model_1)
+        db.refresh(elo_rating_by_model_2)
+        db.refresh(elo_rating_1_by_model_and_template)
+        db.refresh(elo_rating_2_by_model_and_template)
+
+        logger.info(f"Batch inserted: elo_rating_by_template_1={elo_rating_by_template_1.id}, elo_rating_by_template_2={elo_rating_by_template_2.id}, elo_rating_by_model_1={elo_rating_by_model_1.id}, elo_rating_by_model_2={elo_rating_by_model_2.id}, elo_rating_1_by_model_and_template={elo_rating_1_by_model_and_template.id}, elo_rating_2_by_model_and_template={elo_rating_2_by_model_and_template.id}")
+
+        new_rating_by_template_1, new_rating_by_template_2 = get_new_rating_for_both_challengers(
+            elo_rating_by_template_1.elo_rating, 
+            elo_rating_by_template_2.elo_rating, 
+            result
+        )
+
+        new_rating_by_model_1, new_rating_by_model_2 = get_new_rating_for_both_challengers(
+            elo_rating_by_model_1.elo_rating, 
+            elo_rating_by_model_2.elo_rating, 
+            result
+        )
+        
+        new_rating_1_by_model_and_template, new_rating_2_by_model_and_template = get_new_rating_for_both_challengers(
+            elo_rating_1_by_model_and_template.elo_rating, 
+            elo_rating_2_by_model_and_template.elo_rating, 
+            result
+        )
+
+        elo_rating_by_template_1.elo_rating = new_rating_by_template_1
+        elo_rating_by_template_2.elo_rating = new_rating_by_template_2
+        elo_rating_by_model_1.elo_rating = new_rating_by_model_1
+        elo_rating_by_model_2.elo_rating = new_rating_by_model_2
+        elo_rating_1_by_model_and_template.elo_rating = new_rating_1_by_model_and_template
+        elo_rating_2_by_model_and_template.elo_rating = new_rating_2_by_model_and_template
+        
+        db.commit()
+        db.refresh(elo_rating_by_template_1)
+        db.refresh(elo_rating_by_template_2)
+        db.refresh(elo_rating_by_model_1)
+        db.refresh(elo_rating_by_model_2)
+        db.refresh(elo_rating_1_by_model_and_template)
+        db.refresh(elo_rating_2_by_model_and_template)
+
+        logger.info(f"Batch updated: elo_rating_by_template_1={elo_rating_by_template_1.elo_rating}, elo_rating_by_template_2={elo_rating_by_template_2.elo_rating}, elo_rating_by_model_1={elo_rating_by_model_1.elo_rating}, elo_rating_by_model_2={elo_rating_by_model_2.elo_rating}, elo_rating_1_by_model_and_template={elo_rating_1_by_model_and_template.elo_rating}, elo_rating_2_by_model_and_template={elo_rating_2_by_model_and_template.elo_rating}")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in batch insert: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    
+
 
 def get_new_rating_for_both_challengers(challenger_1_score: float, challenger_2_score: float, request: UpdateBattleWinnerRequest):
      # Update ELO ratings based on battle result
@@ -192,45 +327,46 @@ def calculate_elo_rating(rating_a: float, rating_b: float, result: str, k_factor
 
 
 
-def write_battle_result(db: db_dependency, template_1_id: str, template_2_id: str, input_text: str, output_text_1: dict, output_text_2: dict, model_1: str, model_2: str):
+@functools.lru_cache(maxsize=128)
+def load_commentaries():
+    if not _commentary_cache:
+        commentaries_dir = os.path.join(os.path.dirname(__file__), "..", "commentaries_and_sanskrit")
+        for json_file in os.listdir(commentaries_dir):
+            if json_file.endswith('.json'):
+                file_path = os.path.join(commentaries_dir, json_file)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    _commentary_cache[json_file] = json.load(f)
+    return _commentary_cache
+
+def write_to_battle_result(db: db_dependency, random_template_id_1: str, random_template_id_2: str, challenge_id: str, input_text: str, translation_1: dict, translation_2: dict, model_1: str, model_2: str):
+
     battle_result = BattleResult(
-        template_A_id = template_1_id,
-        template_B_id = template_2_id,
-        input_text = input_text,
-        output_text_A = str(output_text_1),
-        output_text_B = str(output_text_2),
-        model_A = model_1,
-        model_B = model_2
+        template_A_id=random_template_id_1,
+        template_B_id=random_template_id_2,
+        input_text=input_text,
+        output_text_A=str(translation_1),
+        output_text_B=str(translation_2),
+        model_A=model_1,
+        model_B=model_2
     )
+
     try:
+        # Batch insert all objects in a single transaction
         db.add(battle_result)
         db.commit()
+        
+        # Refresh to get the generated IDs
         db.refresh(battle_result)
-        logger.info(f"Written to battle result: {battle_result}")
-        return battle_result
+        
+        logger.info(f"Batch inserted: battle_result.id={battle_result.id}")
+        return battle_result.id
     except Exception as e:
         db.rollback()
-        logger.error(f"Error writing to battle result: {str(e)}")
+        logger.error(f"Error in batch insert: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def write_to_arena_rating(db: db_dependency, template_id: str, challenge_id: str, input_text: str, output_text: dict, score: int):
-    arena_rating = ArenaRating(
-        template_id = template_id,
-        challenge_id = challenge_id,
-        input_text = input_text,
-        output_text = str(output_text),
-        score = score
-    )
-    try:
-        db.add(arena_rating)
-        db.commit()
-        db.refresh(arena_rating)
-        logger.info(f"Written to arena rating: {arena_rating}")
-        return arena_rating
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error writing to arena rating: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    
+
         
 def generate_translation(db: db_dependency, model: str, template: TemplateV2, input_text: str):
     is_ucca_present = check_ucca_present(template.template)
@@ -284,11 +420,91 @@ def generate_translation(db: db_dependency, model: str, template: TemplateV2, in
 
     return translation
 
+async def generate_translation_async(db: db_dependency, model: str, template: TemplateV2, input_text: str):
+    is_ucca_present = check_ucca_present(template.template)
+    is_gloss_present = check_gloss_present(template.template)
+    is_commentaries_present = check_commentaries_present(template.template)
+    is_sanskrit_present = check_sanskrit_present(template.template)
+
+    ucca = None
+    gloss = None
+
+    commentaries_and_sanskrit = get_commentaries_and_sanskrit(input_text)
+    if not commentaries_and_sanskrit:
+        raise HTTPException(status_code=400, detail="No commentaries and sanskrit found")
+
+    # Create tasks for parallel execution
+    tasks = []
+    
+    if is_ucca_present:
+        tasks.append(("ucca", get_ucca_async(input_text, commentaries_and_sanskrit, model)))
+        
+    if is_gloss_present and ucca is not None:
+        # Note: gloss depends on ucca, so we'll handle this sequentially if ucca is needed
+        pass
+    elif is_gloss_present:
+        tasks.append(("gloss", get_gloss_async(input_text, commentaries_and_sanskrit, {}, model)))
+
+    # Execute tasks in parallel
+    if tasks:
+        task_results = await asyncio.gather(*[task for _, task in tasks])
+        
+        for i, (task_name, _) in enumerate(tasks):
+            if task_name == "ucca":
+                ucca = task_results[i].get("ucca_graph", None)
+            elif task_name == "gloss":
+                gloss = task_results[i].get("glossary", None)
+    
+    # Handle gloss if it depends on ucca (sequential execution)
+    if is_gloss_present and is_ucca_present and gloss is None:
+        gloss_result = await get_gloss_async(input_text, commentaries_and_sanskrit, ucca, model)
+        gloss = gloss_result.get("glossary", None)
+
+    combo_key = generate_combo_key(is_ucca_present, is_gloss_present, is_commentaries_present, is_sanskrit_present)
+
+    try:
+        db_challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+    except Exception as e:
+        logger.error(f"Error getting challenge: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    payload = {
+        "combo_key": combo_key,
+        "input": {
+            "source": input_text,
+            "commentaries": [
+                commentaries_and_sanskrit["commentary_1"],
+                commentaries_and_sanskrit["commentary_2"],
+                commentaries_and_sanskrit["commentary_3"]
+            ],
+            "ucca": str(ucca),
+            "gloss": str(gloss),
+            "sanskrit": commentaries_and_sanskrit["sanskrit_text"],
+            "target_language": db_challenge.to_language
+        },
+        "model_name": model,
+        "model_params": {},
+        "custom_prompt": template.template
+    }
+
+    translation = await get_translation_async(payload)
+
+    return translation
+
 
 def get_translation(payload: dict):
     try:
         response = requests.post(f"{LANGGRAPH_URL}/workflow/run", json=payload)
         return response.json()
+    except Exception as e:
+        logger.error(f"Error generating translation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def get_translation_async(payload: dict):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{LANGGRAPH_URL}/workflow/run", json=payload) as response:
+                return await response.json()
     except Exception as e:
         logger.error(f"Error generating translation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -323,6 +539,25 @@ def get_gloss(input_text: str, commentaries_and_sanskrit: dict, ucca: dict, mode
         logger.error(f"Error generating Gloss: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def get_gloss_async(input_text: str, commentaries_and_sanskrit: dict, ucca: dict, model: str):
+    payload = {
+        "input_text": input_text,
+        "model_name": model,
+        "model_params": {},
+        "ucca_interpretation": str(ucca),
+        "commentary_1": commentaries_and_sanskrit["commentary_1"],
+        "commentary_2": commentaries_and_sanskrit["commentary_2"],
+        "commentary_3": commentaries_and_sanskrit["commentary_3"],
+        "sanskrit_text": commentaries_and_sanskrit["sanskrit_text"]
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{LANGGRAPH_URL}/gloss/generate", json=payload) as response:
+                return await response.json()
+    except Exception as e:
+        logger.error(f"Error generating Gloss: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 def get_ucca(input_text: str, commentaries_and_sanskrit: dict, model: str):
     payload = {
         "input_text": input_text,
@@ -339,36 +574,37 @@ def get_ucca(input_text: str, commentaries_and_sanskrit: dict, model: str):
         logger.error(f"Error generating UCCA: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def get_ucca_async(input_text: str, commentaries_and_sanskrit: dict, model: str):
+    payload = {
+        "input_text": input_text,
+        "model_name": model,
+        "commentary_1": commentaries_and_sanskrit["commentary_1"],
+        "commentary_2": commentaries_and_sanskrit["commentary_2"],
+        "commentary_3": commentaries_and_sanskrit["commentary_3"],
+        "sanskrit": commentaries_and_sanskrit["sanskrit_text"]
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{LANGGRAPH_URL}/ucca/generate", json=payload) as response:
+                return await response.json()
+    except Exception as e:
+        logger.error(f"Error generating UCCA: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     
 def get_commentaries_and_sanskrit(input_text: str):
-    """
-    Go through every file in the commentaries_and_sanskrit folder and print every object inside it.
-    """
-    commentaries_dir = os.path.join(os.path.dirname(__file__), "..", "commentaries_and_sanskrit")
-    # List all files in the directory
-    try:
-        files = [f for f in os.listdir(commentaries_dir) if f.endswith('.json')]
-    except Exception as e:
-        logger.error(f"Error listing files in directory {commentaries_dir}: {str(e)}")
-        return
-
-    for json_file in files:
-        file_path = os.path.join(commentaries_dir, json_file)
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            for entry in data:
-                root_display_text = entry.get("root_display_text", "")
-                if is_fuzzy_match(input_text, root_display_text):
-                    return entry
-            
-        except FileNotFoundError:
-            logger.warning(f"Commentary file not found: {file_path}")
-        except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON file: {file_path}")
-        except Exception as e:
-            logger.error(f"Error reading commentary file {file_path}: {str(e)}")
+    """Optimized version using cached data and better search"""
+    commentaries = load_commentaries()
     
+    # Use a more efficient search strategy
+    for file_data in commentaries.values():
+        for entry in file_data:
+            root_display_text = entry.get("root_display_text", "")
+            # Quick length check before expensive fuzzy matching
+            if abs(len(input_text) - len(root_display_text)) / max(len(input_text), len(root_display_text)) > 0.5:
+                continue
+            if is_fuzzy_match(input_text, root_display_text):
+                return entry
     return None
 
 def is_fuzzy_match(input_text: str, root_display_text: str, threshold: float = 0.7) -> bool:
