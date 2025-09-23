@@ -6,6 +6,7 @@ import logging
 from typing import List
 
 from models.arena_challege import ArenaChallenge
+from models.template_v2 import TemplateV2
 from models.arena_rating import (
     EloRatingByTemplate,
     EloRatingByModel,
@@ -28,13 +29,15 @@ router = APIRouter(prefix="/arena_ranking", tags=["arena_ranking"])
 @router.get("/all", response_model=List[ArenaRankingAll], status_code=status.HTTP_200_OK)
 def get_all_arena_ranking(db: db_dependency):
     try:
-        arena_ranking_all = db.query(EloRatingByModelAndTemplate).all()
+        arena_ranking_all = db.query(EloRatingByModelAndTemplate, TemplateV2.template_name).join(
+            TemplateV2, EloRatingByModelAndTemplate.template_id == TemplateV2.id
+        ).all()
 
-        ranking_by_challenge_id = get_ranking_by_challenge_id(arena_ranking_all)
+        ranking_by_challenge_id = get_ranking_by_challenge_id_with_template_names(arena_ranking_all)
 
         challenge_details_dict = get_challenge_details_dict(db)
         
-        response = generate_ranking_all_response(challenge_details_dict,ranking_by_challenge_id)
+        response = generate_ranking_all_response_with_template_names(challenge_details_dict, ranking_by_challenge_id)
 
         return response
     except Exception as e:
@@ -49,22 +52,26 @@ def get_arena_ranking_by_challenge_id(
 
     try:
         if ranking_by == RankingBy.COMBINED:
-            arena_ranking_db = db.query(EloRatingByModelAndTemplate).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).all()
+            arena_ranking_db = db.query(EloRatingByModelAndTemplate, TemplateV2.template_name).join(
+                TemplateV2, EloRatingByModelAndTemplate.template_id == TemplateV2.id
+            ).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).all()
             arena_ranking_list = [
                 ArenaRanking(
-                    template_name=ranking.template_name,
-                    model_name=ranking.model_name,
-                    elo_rating=ranking.elo_rating
-                ) for ranking in arena_ranking_db
+                    template_name=template_name,
+                    model_name=rating.model_name,
+                    elo_rating=rating.elo_rating
+                ) for rating, template_name in arena_ranking_db
             ]
         elif ranking_by == RankingBy.TEMPLATE:
-            arena_ranking_db = db.query(EloRatingByTemplate).filter(EloRatingByTemplate.challenge_id == challenge_id).all()
+            arena_ranking_db = db.query(EloRatingByTemplate, TemplateV2.template_name).join(
+                TemplateV2, EloRatingByTemplate.template_id == TemplateV2.id
+            ).filter(EloRatingByTemplate.challenge_id == challenge_id).all()
             arena_ranking_list = [
                 ArenaRanking(
-                    template_name=ranking.template_name,
+                    template_name=template_name,
                     model_name=None,
-                    elo_rating=ranking.elo_rating
-                ) for ranking in arena_ranking_db
+                    elo_rating=rating.elo_rating
+                ) for rating, template_name in arena_ranking_db
             ]
         elif ranking_by == RankingBy.MODEL:
             arena_ranking_db = db.query(EloRatingByModel).filter(EloRatingByModel.challenge_id == challenge_id).all()
@@ -108,7 +115,31 @@ def generate_ranking_all_response(challenge_details_dict: Dict[str, ChallengeDet
         arena_ranking_model = []
         for ranking in ranking:
             arena_ranking_model.append(ArenaRanking(
-                template_name=ranking.template_name,
+                template_name=ranking.template_id,
+                model_name=ranking.model_name,
+                elo_rating=ranking.elo_rating
+            ))
+        response.append(ArenaRankingAll(
+            challenge_details=challenge_details_model,
+            arena_ranking=arena_ranking_model
+        ))
+    return response
+
+def generate_ranking_all_response_with_template_names(challenge_details_dict: Dict[str, ChallengeDetails], ranking_by_challenge_id):
+    response = []
+    for challenge_id, rankings in ranking_by_challenge_id.items():
+        challenge_details = challenge_details_dict[challenge_id]
+        challenge_details_model = ChallengeDetails(
+            challenge_id=challenge_id,
+            challenge_name=challenge_details["challenge_name"],
+            text=challenge_details["text"],
+            from_language=challenge_details["from_language"],
+            to_language=challenge_details["to_language"]
+        )
+        arena_ranking_model = []
+        for ranking, template_name in rankings:
+            arena_ranking_model.append(ArenaRanking(
+                template_name=template_name,
                 model_name=ranking.model_name,
                 elo_rating=ranking.elo_rating
             ))
@@ -141,4 +172,13 @@ def get_ranking_by_challenge_id(arena_ranking_all: List[EloRatingByModelAndTempl
         if arena_ranking.challenge_id not in ranking_by_challenge_id:
             ranking_by_challenge_id[arena_ranking.challenge_id] = []
         ranking_by_challenge_id[arena_ranking.challenge_id].append(arena_ranking)
+    return ranking_by_challenge_id
+
+def get_ranking_by_challenge_id_with_template_names(arena_ranking_all):
+    ranking_by_challenge_id = {}
+    for arena_ranking, template_name in arena_ranking_all:
+        if arena_ranking.challenge_id not in ranking_by_challenge_id:
+            ranking_by_challenge_id[arena_ranking.challenge_id] = []
+        # Create a tuple with the rating and template name
+        ranking_by_challenge_id[arena_ranking.challenge_id].append((arena_ranking, template_name))
     return ranking_by_challenge_id
