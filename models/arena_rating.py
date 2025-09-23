@@ -1,5 +1,5 @@
 from database import Base
-from sqlalchemy import Column, String, Float, DateTime
+from sqlalchemy import Column, String, Float, DateTime, UniqueConstraint
 import datetime
 import uuid
 
@@ -21,26 +21,30 @@ class EloRatingByTemplate(Base):
     __tablename__ = "elo_rating_by_template"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
-    template_id = Column(String, nullable=False, unique=True)
+    template_id = Column(String, nullable=False)
     challenge_id = Column(String, nullable=False)
     input_text = Column(String)
     output_text = Column(String)
     elo_rating = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    
+    __table_args__ = (UniqueConstraint('template_id', 'challenge_id', name='_template_challenge_uc'),)
 
 class EloRatingByModel(Base):
 
     __tablename__ = "elo_rating_by_model"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
-    model_name = Column(String, nullable=False, unique=True)
+    model_name = Column(String, nullable=False)
     challenge_id = Column(String, nullable=False)
     input_text = Column(String)
     output_text = Column(String)
     elo_rating = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    
+    __table_args__ = (UniqueConstraint('model_name', 'challenge_id', name='_model_challenge_uc'),)
 
 class EloRatingByModelAndTemplate(Base):
 
@@ -55,6 +59,8 @@ class EloRatingByModelAndTemplate(Base):
     elo_rating = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    
+    __table_args__ = (UniqueConstraint('model_name', 'template_id', 'challenge_id', name='_model_template_challenge_uc'),)
 
 class BattleResult(Base):
 
