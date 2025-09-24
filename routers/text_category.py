@@ -2,7 +2,7 @@ from fastapi import APIRouter, status, HTTPException, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 
-from typing import List
+from typing import List, Annotated
 
 from models.text_category import TextCategory
 from schemas.text_category import (
@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-db_dependency = Depends(get_db)
+db_dependency = Annotated[Session, Depends(get_db)]
 
 router = APIRouter(prefix="/text_category", tags=["text_category"])
 
