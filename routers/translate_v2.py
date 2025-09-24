@@ -432,8 +432,19 @@ async def generate_translation_async(db: db_dependency, model: str, template: Te
 
     ucca = None
     gloss = None
+    commentaries_1 = None
+    commentaries_2 = None
+    commentaries_3 = None
+    sanskrit = None
 
     commentaries_and_sanskrit = get_commentaries_and_sanskrit(input_text)
+    if is_commentaries_present:
+        commentaries_1 = commentaries_and_sanskrit["commentary_1"]
+        commentaries_2 = commentaries_and_sanskrit["commentary_2"]
+        commentaries_3 = commentaries_and_sanskrit["commentary_3"]
+    if is_sanskrit_present:
+        sanskrit = commentaries_and_sanskrit["sanskrit_text"]
+    
     if not commentaries_and_sanskrit:
         raise HTTPException(status_code=400, detail="No commentaries and sanskrit found")
 
@@ -480,19 +491,21 @@ async def generate_translation_async(db: db_dependency, model: str, template: Te
         "input": {
             "source": input_text,
             "commentaries": [
-                commentaries_and_sanskrit["commentary_1"],
-                commentaries_and_sanskrit["commentary_2"],
-                commentaries_and_sanskrit["commentary_3"]
+                commentaries_and_sanskrit["commentary_1"] if commentaries_1 else "",
+                commentaries_and_sanskrit["commentary_2"] if commentaries_2 else "",
+                commentaries_and_sanskrit["commentary_3"] if commentaries_3 else "",
             ],
             "ucca": str(ucca),
             "gloss": str(gloss),
-            "sanskrit": commentaries_and_sanskrit["sanskrit_text"],
+            "sanskrit": commentaries_and_sanskrit["sanskrit_text"] if sanskrit else "",
             "target_language": db_challenge.to_language
         },
         "model_name": model,
         "model_params": {},
         "custom_prompt": template.template
     }
+
+    logger.info(f"Payload: {payload}")
 
     translation = await get_translation_async(payload)
 
