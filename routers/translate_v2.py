@@ -524,6 +524,7 @@ async def get_translation_async(payload: dict):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{LANGGRAPH_URL}/workflow/run", json=payload) as response:
+                logger.info(f"Translation response: {response}")
                 return await response.json()
     except Exception as e:
         logger.error(f"Error generating translation: {str(e)}")

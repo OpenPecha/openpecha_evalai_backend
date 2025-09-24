@@ -10,7 +10,7 @@ class TemplateV2(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     template_name = Column(String, nullable=False)
-    username = Column(String, nullable=False)
+    user_id = Column(String, nullable=False)
     template = Column(String)
     challenge_id = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
