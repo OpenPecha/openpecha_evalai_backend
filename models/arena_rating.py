@@ -1,28 +1,15 @@
 from database import Base
-from sqlalchemy import Column, String, Float, DateTime, UniqueConstraint
+from sqlalchemy import Column, String, Float, DateTime, UniqueConstraint, ForeignKey
 import datetime
 import uuid
-
-class ArenaRating(Base):
-
-    __tablename__ = "arena_rating"
-
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
-    template_id = Column(String, nullable=False)
-    challenge_id = Column(String, nullable=False)
-    input_text = Column(String)
-    output_text = Column(String)
-    score = Column(Float, default=0.0, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class EloRatingByTemplate(Base):
 
     __tablename__ = "elo_rating_by_template"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
-    template_id = Column(String, nullable=False)
-    challenge_id = Column(String, nullable=False)
+    template_id = Column(String, ForeignKey("template_v2.id"), nullable=False)
+    challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     input_text = Column(String)
     output_text = Column(String)
     elo_rating = Column(Float, default=0.0, nullable=False)
@@ -36,7 +23,7 @@ class EloRatingByModel(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     model_name = Column(String, nullable=False)
-    challenge_id = Column(String, nullable=False)
+    challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     input_text = Column(String)
     output_text = Column(String)
     elo_rating = Column(Float, default=0.0, nullable=False)
@@ -50,8 +37,8 @@ class EloRatingByModelAndTemplate(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     model_name = Column(String, nullable=False)
-    template_id = Column(String, nullable=False)
-    challenge_id = Column(String, nullable=False)
+    template_id = Column(String, ForeignKey("template_v2.id"), nullable=False)
+    challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     input_text = Column(String)
     output_text = Column(String)
     elo_rating = Column(Float, default=0.0, nullable=False)
@@ -65,15 +52,16 @@ class BattleResult(Base):
     __tablename__ = "battle_result"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
-    template_A_id = Column(String, nullable=False)
-    template_B_id = Column(String, nullable=False)
+    template_A_id = Column(String, ForeignKey("template_v2.id"), nullable=False)
+    template_B_id = Column(String, ForeignKey("template_v2.id"), nullable=False)
     input_text = Column(String)
     output_text_A = Column(String)
     output_text_B = Column(String)
     model_A = Column(String, nullable=False)
     model_B = Column(String, nullable=False)
-    challenge_id = Column(String, nullable=False)
-    winner_id = Column(String, default=None, nullable=True)
+    voter_user_id = Column(String, ForeignKey("user.id"), default=None, nullable=True)
+    challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
+    winner_status = Column(String, default=None, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
 

@@ -17,7 +17,6 @@ import os
 from models.arena_challege import ArenaChallenge
 from models.template_v2 import TemplateV2
 from models.arena_rating import (
-    ArenaRating, 
     BattleResult,
     EloRatingByTemplate,
     EloRatingByModel,
@@ -30,6 +29,9 @@ from schemas.translate_v2 import (
     UpdateBattleWinnerRequest,
     ResultType
 )
+
+from models.user import User
+from auth import get_current_active_user
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +101,11 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
 
 
 @router.put("/update_battle_winner", status_code=status.HTTP_200_OK)
-def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
+def update_battle_winner(
+    db: db_dependency, 
+    request: UpdateBattleWinnerRequest,
+    current_user: User = Depends(get_current_active_user)
+):
     
     try:
         battle_details = db.query(BattleResult).filter(BattleResult.id == request.battle_result_id).first()
@@ -130,6 +136,28 @@ def update_battle_winner(db: db_dependency, request: UpdateBattleWinnerRequest):
         output_text_2,
         request.result
     )
+
+    update_battle_result(
+        db,
+        request.battle_result_id,
+        request.result,
+        current_user.id
+    )
+
+    return "Success"
+
+def update_battle_result(db: db_dependency, battle_result_id: str, result: ResultType, voter_user_id: str):
+    try:
+        battle_result = db.query(BattleResult).filter(BattleResult.id == battle_result_id).first()
+        battle_result.voter_user_id = voter_user_id
+        battle_result.winner_status = result
+        db.commit()
+        db.refresh(battle_result)
+        return battle_result
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Battle result not found")
+    
 
 def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, template_2_id: str, model_1: str, model_2: str, challenge_id: str, input_text: str, output_text_1: str, output_text_2: str, result: ResultType):
 
