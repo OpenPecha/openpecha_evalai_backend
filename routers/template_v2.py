@@ -79,21 +79,6 @@ def get_all_template_v2(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# @router.get("/user/{username}", response_model=List[TemplateV2Read], status_code=status.HTTP_200_OK)
-# def get_all_template_v2_by_username(
-#     db: db_dependency, 
-#     challenge_id: str = Query(..., description="This is the challenge id of the template"),
-#     username: str = Path(..., description="This is the username of the template")
-# ):
-#     try:
-#         response = db.query(TemplateV2).filter(
-#             (TemplateV2.username == username) & (TemplateV2.challenge_id == challenge_id)
-#         ).all()
-#         text_category: Dict[str, str] = get_text_category(db)
-#         return get_template_response_by_username_and_challenge_id(db, response, text_category)
-        
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/create", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
 def create_template_v2(
@@ -131,13 +116,54 @@ def create_template_v2(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/delete/{template_id}", status_code=status.HTTP_200_OK)
-def delete_by_template_id(
-    db: db_dependency,
-    template_id: str = Path(..., description="This is the id of the template to delete")
+@router.put("/update/{template_id}", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
+def create_template_v2(
+    db: db_dependency, 
+    template_v2: TemplateV2Create,
+    template_id: str = Path(..., description="This is the id of the template to update"),
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
         template = db.query(TemplateV2).filter(TemplateV2.id == template_id).first()
+        if template.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="You are not authorized to update this template")
+        template.template_name = template_v2.template_name
+        template.template = template_v2.template
+        template.challenge_id = template_v2.challenge_id
+        template.user_id = current_user.id
+        db.commit()
+        db.refresh(template)
+        logger.info(f"Template updated: {template}")
+
+        challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+        text_category: Dict[str, str] = get_text_category(db)
+
+        return TemplateV2Read(
+            id=template.id,
+            template_name=template.template_name,
+            user_id=template.user_id,
+            template=template.template,
+            challenge_id=challenge.id,
+            text_category=text_category[challenge.text_category_id],
+            challenge_name=challenge.challenge_name,
+            from_language=challenge.from_language,
+            to_language=challenge.to_language,
+            created_at=template.created_at,
+            updated_at=template.updated_at
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/delete/{template_id}", status_code=status.HTTP_200_OK)
+def delete_by_template_id(
+    db: db_dependency,
+    template_id: str = Path(..., description="This is the id of the template to delete"),
+    current_user: User = Depends(get_current_active_user)
+):
+    try:
+        template = db.query(TemplateV2).filter(TemplateV2.id == template_id).first()
+        if template.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="You are not authorized to delete this template")
         db.delete(template)
         db.commit()
         return {"message": "Template deleted successfully"}
