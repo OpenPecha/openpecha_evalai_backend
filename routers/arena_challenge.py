@@ -55,7 +55,7 @@ def get_arena_challenge_by_query(
     db: db_dependency,
     from_language: Optional[str] = Query(default="bo", description="From language"),
     to_language: Optional[str] = Query(default=None, description="To language"),
-    text: Optional[str] = Query(default=None, description="Text"),
+    text_category_id: Optional[str] = Query(default=None, description="Text category id"),
     challenge_name: Optional[str] = Query(default=None, description="Challenge name"),
 ):
     try:
@@ -64,8 +64,8 @@ def get_arena_challenge_by_query(
             query = query.filter(ArenaChallenge.from_language == from_language)
         if to_language is not None:
             query = query.filter(ArenaChallenge.to_language == to_language)
-        if text is not None:
-            query = query.filter(ArenaChallenge.text == text)
+        if text_category_id is not None:
+            query = query.filter(ArenaChallenge.text_category_id == text_category_id)
         if challenge_name is not None:
             query = query.filter(ArenaChallenge.challenge_name == challenge_name)
         arena_challenge = query.all()

@@ -7,8 +7,6 @@ class ArenaChallengeRead(BaseModel):
     challenge_name: str
     from_language: str
     to_language: str
-    created_at: datetime
-    updated_at: datetime
 
 class ArenaChallengeCreate(BaseModel):
     text_category_id: str
