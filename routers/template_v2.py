@@ -31,7 +31,8 @@ def get_all_template_v2_by_username(
         response = db.query(TemplateV2).filter(
             (TemplateV2.username == username) & (TemplateV2.challenge_id == challenge_id)
         ).all()
-        return get_template_response_by_username_and_challenge_id(db, response)
+        text_category: Dict[str, str] = get_text_category(db)
+        return get_template_response_by_username_and_challenge_id(db, response, text_category)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -62,10 +63,13 @@ def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def get_template_response_by_username_and_challenge_id(db: db_dependency, response: List[TemplateV2]):
+def get_template_response_by_username_and_challenge_id(db: db_dependency, response: List[TemplateV2], text_category: Dict[str, str]):
     templates = []
     for template in response:
+        print(template.challenge_id)
         challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+        if challenge is None:
+            continue
         templates.append(
             TemplateV2Read(
                 id=template.id,
@@ -73,7 +77,7 @@ def get_template_response_by_username_and_challenge_id(db: db_dependency, respon
                 username=template.username,
                 template=template.template,
                 challenge_id=challenge.id,
-                text=challenge.text,
+                text_category=text_category[challenge.text_category_id],
                 challenge_name=challenge.challenge_name,
                 from_language=challenge.from_language,
                 to_language=challenge.to_language,
