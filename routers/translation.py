@@ -24,6 +24,8 @@ import logging
 from sse_starlette import EventSourceResponse
 from dotenv import load_dotenv
 
+from models.template import Template
+
 load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -409,6 +411,11 @@ async def stream_translation(model: str, text: str, prompt: Optional[str] = None
     else:
         yield f"Configuration Error: Unknown model provider '{provider}' for model '{model}'. Supported providers: openai, anthropic, google, deepseek-v3"
 
+def get_template_text(db: Session, template_id: str):
+    template = db.query(Template).filter(Template.id == template_id).first()
+    return template.template_text
+
+
 @router.post("/stream")
 async def translate_text(
     model: str = Query(..., description="Model version to use for translation"),
@@ -466,12 +473,16 @@ async def translate_text(
             status_code=400, 
             detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
         )
+
+
+    template = get_template_text(db, request.template_id)
+    text_combined_with_template = f"{template}\n{request.text}"
     
     # Create translation job
     job = TranslationJob(
-        source_text=request.text,
+        source_text=text_combined_with_template,
         prompt=request.prompt,
-        template=request.template,
+        template=template,
         target_language=request.target_language,
         user_id=current_user.id
     )
@@ -495,7 +506,7 @@ async def translate_text(
     # Check for cached translation before making API call
     cached_output = None
     if model_version_id != "skip_db_operations":
-        cached_output = find_cached_translation(db, request.text, model_version_id, request.prompt)
+        cached_output = find_cached_translation(db, text_combined_with_template, model_version_id, request.prompt)
         
     if cached_output:
         
@@ -519,7 +530,7 @@ async def translate_text(
         error_message = None
         
         try:
-            async for chunk in stream_translation(model, request.text, request.prompt):
+            async for chunk in stream_translation(model, text_combined_with_template, request.prompt):
                 full_text += chunk
                 
                 # Check if this chunk is an error message
@@ -582,11 +593,14 @@ def translate_multi_model(
                 detail=f"Unsupported model: {model}. Supported models: {list(MODEL_PROVIDERS.keys())}"
             )
     
+    template = get_template_text(db, request.template_id)
+    text_combined_with_template = f"{template}\n{request.text}"
+
     # Create translation job
     job = TranslationJob(
-        source_text=request.text,
+        source_text=text_combined_with_template,
         prompt=request.prompt,
-        template=request.template,
+        template=template,
         target_language=request.target_language,
         user_id=current_user.id
     )
@@ -615,7 +629,7 @@ def translate_multi_model(
         
         # Check for cached translation for this model
         if model_version_id != "skip_db_operations":
-            cached_output = find_cached_translation(db, request.text, model_version_id, request.prompt)
+            cached_output = find_cached_translation(db, text_combined_with_template, model_version_id, request.prompt)
             if cached_output:
                 cached_outputs[model] = cached_output
     
@@ -650,7 +664,7 @@ def translate_multi_model(
                 return
             
             try:
-                async for chunk in stream_translation(model, request.text, request.prompt):
+                async for chunk in stream_translation(model, text_combined_with_template, request.prompt):
                     full_text += chunk
                     
                     # Check if this chunk is an error message

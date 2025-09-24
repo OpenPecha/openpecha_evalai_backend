@@ -80,13 +80,13 @@ class VoteRead(VoteBase):
 class TranslationRequest(BaseModel):
     text: str = Field(..., description=TEXT_TO_TRANSLATE_DESC)
     prompt: Optional[str] = Field(None, description=OPTIONAL_PROMPT_DESC)
-    template: Optional[str] = Field(None, description="Template used for translation")
+    template_id: str = Field(..., description="Template id to be used for translation")
     target_language: Optional[str] = Field(None, description="Target language for translation")
 
 class MultiTranslationRequest(BaseModel):
     text: str = Field(..., description=TEXT_TO_TRANSLATE_DESC)
     prompt: Optional[str] = Field(None, description=OPTIONAL_PROMPT_DESC)
-    template: Optional[str] = Field(None, description="Template used for translation")
+    template_id: str = Field(..., description="Template id to be used for translation")
     target_language: Optional[str] = Field(None, description="Target language for translation")
     models: List[str] = Field(..., description="List of model versions to use", min_items=2, max_items=2)
 
