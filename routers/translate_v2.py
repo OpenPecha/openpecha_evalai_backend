@@ -652,9 +652,11 @@ def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], ch
         if not templates:
             raise HTTPException(status_code=400, detail="Not enough templates found for the challenge")
         return random.choice(templates).id
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting random template: {str(e)}")
-        return None
+        raise HTTPException(status_code=500, detail=str(e))
 
 def get_random_model_v2():
     model = random.choice(list(get_model_providers().keys()))
