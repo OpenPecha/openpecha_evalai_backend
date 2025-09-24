@@ -5,4 +5,3 @@ from models.category import Category
 from models.model import Model
 from models.result import Result
 from models.translation import ModelVersion, TranslationJob, TranslationOutput, Vote
-from models.template import Template
