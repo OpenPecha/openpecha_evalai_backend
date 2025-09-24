@@ -324,9 +324,9 @@ def calculate_elo_rating(rating_a: float, rating_b: float, result: str, k_factor
     new_rating_a = rating_a + k_factor * (actual_a - expected_a)
     new_rating_b = rating_b + k_factor * (actual_b - expected_b)
     
-    # Ensure ratings don't go below a minimum threshold (e.g., 100)
-    new_rating_a = max(100, new_rating_a)
-    new_rating_b = max(100, new_rating_b)
+    # Ensure ratings don't go below a minimum threshold (e.g., 1000)
+    new_rating_a = max(1000, new_rating_a)
+    new_rating_b = max(1000, new_rating_b)
     
     return round(new_rating_a, 2), round(new_rating_b, 2)
 
