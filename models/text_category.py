@@ -11,5 +11,5 @@ class TextCategory(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     name = Column(String, nullable=False)
-    created_by = Column(String, nullable=False)
-    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at = Column(String, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(String, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
