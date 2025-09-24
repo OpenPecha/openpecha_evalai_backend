@@ -9,6 +9,7 @@ class ArenaChallenge(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     text_category_id = Column(String, nullable=False)
+    user_id = Column(String, nullable=False)
     challenge_name = Column(String, nullable=False)
     from_language = Column(String, nullable=False)
     to_language = Column(String, nullable=False)

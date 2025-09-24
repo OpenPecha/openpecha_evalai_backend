@@ -4,6 +4,7 @@ from datetime import datetime
 class ArenaChallengeRead(BaseModel):
     id: str
     text_category: str
+    user_id: str
     challenge_name: str
     from_language: str
     to_language: str

@@ -6,6 +6,8 @@ from models.arena_challege import ArenaChallenge
 from typing import Annotated, List, Optional, Dict
 
 from models.text_category import TextCategory
+from models.user import User
+from auth import get_current_active_user
 
 
 from schemas.arena_challenge import (
@@ -89,15 +91,23 @@ def get_arena_challenge_by_query(
 def create_arena_challenge(
     db: db_dependency,
     arena_challenge: ArenaChallengeCreate,
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
-        new_arena_challenge = ArenaChallenge(**arena_challenge.model_dump())
+        new_arena_challenge = ArenaChallenge(
+            text_category_id=arena_challenge.text_category_id,
+            user_id=current_user.id,
+            challenge_name=arena_challenge.challenge_name,
+            from_language=arena_challenge.from_language,
+            to_language=arena_challenge.to_language
+        )
         db.add(new_arena_challenge)
         db.commit()
         db.refresh(new_arena_challenge)
         text_category: Dict[str, str] = get_text_category(db)
         return ArenaChallengeRead(
             id=new_arena_challenge.id,
+            user_id=new_arena_challenge.user_id,
             text_category=text_category[new_arena_challenge.text_category_id],
             challenge_name=new_arena_challenge.challenge_name,
             from_language=new_arena_challenge.from_language,
