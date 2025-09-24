@@ -10,7 +10,7 @@ class RankingBy(Enum):
 class ChallengeDetails(BaseModel):
     challenge_id: str
     challenge_name: str
-    text: str
+    text_category: str
     from_language: str
     to_language: str
 
