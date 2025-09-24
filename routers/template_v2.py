@@ -39,10 +39,7 @@ def get_all_template_v2(
 
         templates_with_users = db.query(TemplateV2, User).join(
             User, TemplateV2.user_id == User.id
-        ).filter(TemplateV2.challenge_id == challenge_id).all(
-            offset=skip,
-            limit=limit
-        )
+        ).filter(TemplateV2.challenge_id == challenge_id).offset(skip).limit(limit).all()
 
         text_category: Dict[str, str] = get_text_category(db)
 
@@ -52,12 +49,12 @@ def get_all_template_v2(
             response.append(
                 TemplateV2WithUser(
                     user_detail=UserBase(
-                        id=user.id,
                         username=user.username,
                         first_name=user.first_name,
                         last_name=user.last_name,
                         email=user.email,
-                        picture=user.picture
+                        picture=user.picture,
+                        role=user.role
                     ),
                     template_detail=TemplateV2Read(
                         id=template.id,
