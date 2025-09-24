@@ -18,6 +18,9 @@ from schemas.arena_ranking import (
     ArenaRankingAll,
     RankingBy
 )
+from models.text_category import TextCategory
+
+from routers.arena_challenge import get_text_category
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +36,20 @@ def get_all_arena_ranking(db: db_dependency):
             TemplateV2, EloRatingByModelAndTemplate.template_id == TemplateV2.id
         ).all()
 
-        ranking_by_challenge_id = get_ranking_by_challenge_id_with_template_names(arena_ranking_all)
+        text_category: Dict[str, str] = get_text_category(db)
 
-        challenge_details_dict = get_challenge_details_dict(db)
+        # Get valid challenge IDs from arena_challenge table
+        valid_challenge_ids = {challenge.id for challenge in db.query(ArenaChallenge).all()}
+        
+        # Filter out ratings for non-existent challenges
+        filtered_arena_ranking = [
+            (rating, template_name) for rating, template_name in arena_ranking_all 
+            if rating.challenge_id in valid_challenge_ids
+        ]
+        
+        ranking_by_challenge_id = get_ranking_by_challenge_id_with_template_names(filtered_arena_ranking)
+
+        challenge_details_dict = get_challenge_details_dict(db, text_category)
         
         response = generate_ranking_all_response_with_template_names(challenge_details_dict, ranking_by_challenge_id)
 
@@ -85,11 +99,13 @@ def get_arena_ranking_by_challenge_id(
 
         challenge_detail = db.query(ArenaChallenge).filter(ArenaChallenge.id == challenge_id).first()
 
+        text_category: Dict[str, str] = get_text_category(db)
+
         response = ArenaRankingAll(
             challenge_details=ChallengeDetails(
                 challenge_id=challenge_id,
                 challenge_name=challenge_detail.challenge_name,
-                text=challenge_detail.text,
+                text_category=text_category[challenge_detail.text_category_id],
                 from_language=challenge_detail.from_language,
                 to_language=challenge_detail.to_language
             ),
@@ -108,7 +124,7 @@ def generate_ranking_all_response(challenge_details_dict: Dict[str, ChallengeDet
         challenge_details_model = ChallengeDetails(
             challenge_id=challenge_id,
             challenge_name=challenge_details["challenge_name"],
-            text=challenge_details["text"],
+            text_category=challenge_details["text_category"],
             from_language=challenge_details["from_language"],
             to_language=challenge_details["to_language"]
         )
@@ -132,7 +148,7 @@ def generate_ranking_all_response_with_template_names(challenge_details_dict: Di
         challenge_details_model = ChallengeDetails(
             challenge_id=challenge_id,
             challenge_name=challenge_details["challenge_name"],
-            text=challenge_details["text"],
+            text_category=challenge_details["text_category"],
             from_language=challenge_details["from_language"],
             to_language=challenge_details["to_language"]
         )
@@ -150,14 +166,14 @@ def generate_ranking_all_response_with_template_names(challenge_details_dict: Di
     return response
 
 
-def get_challenge_details_dict(db: db_dependency):
+def get_challenge_details_dict(db: db_dependency, text_category: Dict[str, str]):
     try:
         challenges = db.query(ArenaChallenge).all()
         challenge_details_dict = {}
         for challenge in challenges:
             challenge_details_dict[challenge.id] = {
                 "challenge_name": challenge.challenge_name,
-                "text": challenge.text,
+                "text_category": text_category.get(challenge.text_category_id, "Unknown"),
                 "from_language": challenge.from_language,
                 "to_language": challenge.to_language
             }
