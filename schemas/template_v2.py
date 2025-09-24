@@ -8,7 +8,7 @@ class TemplateV2Read(BaseModel):
     username: str
     template: str
     challenge_id: str
-    text: str
+    text_category: str
     challenge_name: str
     from_language: str
     to_language: str

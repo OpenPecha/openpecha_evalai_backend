@@ -5,6 +5,10 @@ from typing import Annotated, List
 import logging
 from database import get_db
 
+from routers.arena_challenge import get_text_category
+from typing import Dict
+
+
 from models.template_v2 import TemplateV2
 from schemas.template_v2 import (
     TemplateV2Read,
@@ -40,13 +44,14 @@ def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
         db.commit()
         db.refresh(new_template_v2)
         challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == new_template_v2.challenge_id).first()
+        text_category: Dict[str, str] = get_text_category(db)
         return TemplateV2Read(
             id=new_template_v2.id,
             template_name=new_template_v2.template_name,
             username=new_template_v2.username,
             template=new_template_v2.template,
             challenge_id=challenge.id,
-            text=challenge.text,
+            text_category=text_category[challenge.text_category_id],
             challenge_name=challenge.challenge_name,
             from_language=challenge.from_language,
             to_language=challenge.to_language,
