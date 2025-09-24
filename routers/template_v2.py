@@ -66,7 +66,6 @@ def create_template_v2(db: db_dependency, template_v2: TemplateV2Create):
 def get_template_response_by_username_and_challenge_id(db: db_dependency, response: List[TemplateV2], text_category: Dict[str, str]):
     templates = []
     for template in response:
-        print(template.challenge_id)
         challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
         if challenge is None:
             continue
