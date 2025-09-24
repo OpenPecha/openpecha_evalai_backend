@@ -92,7 +92,9 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
         model_1=model_1,
         translation_2=translation_2,
         id_2=random_template_id_2,
-        model_2=model_2
+        model_2=model_2,
+        template_1_name=template_1.template_name,
+        template_2_name=template_2.template_name
     )
 
 

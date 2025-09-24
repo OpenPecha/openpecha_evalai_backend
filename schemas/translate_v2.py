@@ -16,9 +16,11 @@ class TranslateV2Request(BaseModel):
 class TranslationResponse(BaseModel):
     battle_result_id: str
     id_1: str
+    template_1_name: str
     translation_1: dict
     model_1: str
     id_2: str
+    template_2_name: str
     translation_2: dict
     model_2: str
 
