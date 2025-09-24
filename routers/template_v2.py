@@ -26,7 +26,7 @@ router = APIRouter(prefix="/template_v2", tags=["template_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-@router.get("/all", response_model=List[TemplateV2Read], status_code=status.HTTP_200_OK)
+@router.get("/all", response_model=List[TemplateV2WithUser], status_code=status.HTTP_200_OK)
 def get_all_template_v2(
     db: db_dependency,
     challenge_id: str = Query(..., description="This is the challenge id of the template"),
@@ -37,15 +37,17 @@ def get_all_template_v2(
         skip = max(0, (page_number - 1) * 10)
         limit = 10
 
-        templates_with_users = db.query(TemplateV2, User).join(
+        templates_with_users_and_challenges = db.query(TemplateV2, User, ArenaChallenge).join(
             User, TemplateV2.user_id == User.id
+        ).join(
+            ArenaChallenge, TemplateV2.challenge_id == ArenaChallenge.id
         ).filter(TemplateV2.challenge_id == challenge_id).offset(skip).limit(limit).all()
 
         text_category: Dict[str, str] = get_text_category(db)
 
         response = []
 
-        for template, user in templates_with_users:
+        for template, user, challenge in templates_with_users_and_challenges:
             response.append(
                 TemplateV2WithUser(
                     user_detail=UserBase(
@@ -62,10 +64,10 @@ def get_all_template_v2(
                         user_id=template.user_id,
                         template=template.template,
                         challenge_id=template.challenge_id,
-                        text_category=text_category[template.text_category_id],
-                        challenge_name=template.challenge_name,
-                        from_language=template.from_language,
-                        to_language=template.to_language,
+                        text_category=text_category.get(challenge.text_category_id, ""),
+                        challenge_name=challenge.challenge_name,
+                        from_language=challenge.from_language,
+                        to_language=challenge.to_language,
                         created_at=template.created_at,
                         updated_at=template.updated_at
                     )
@@ -109,8 +111,10 @@ def create_template_v2(
         db.add(new_template_v2)
         db.commit()
         db.refresh(new_template_v2)
+        logger.info(f"New template created: {new_template_v2}")
         challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == new_template_v2.challenge_id).first()
         text_category: Dict[str, str] = get_text_category(db)
+
         return TemplateV2Read(
             id=new_template_v2.id,
             template_name=new_template_v2.template_name,

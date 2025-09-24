@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-from schemas.user import UserBase, UserRead
+from schemas.user import UserBase
 
 
 class TemplateV2Read(BaseModel):
@@ -24,5 +24,5 @@ class TemplateV2Create(BaseModel):
     challenge_id: str
 
 class TemplateV2WithUser(BaseModel):
-    user_detail: UserRead
+    user_detail: UserBase
     template_detail: TemplateV2Read
