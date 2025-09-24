@@ -44,8 +44,8 @@ _commentary_cache: Dict[str, List[dict]] = {}
 
 @router.post("", status_code=status.HTTP_200_OK)
 async def translate_v2(db: db_dependency, request: TranslateV2Request):
-    random_template_id_1 = request.template_id if request.template_id else get_random_template_v2(db, [])
-    random_template_id_2 = get_random_template_v2(db, [random_template_id_1])
+    random_template_id_1 = request.template_id if request.template_id else get_random_template_v2(db, [], request.challenge_id)
+    random_template_id_2 = get_random_template_v2(db, [random_template_id_1], request.challenge_id)
 
     logger.info(f"random_template_id_1: {random_template_id_1}")
     logger.info(f"random_template_id_2: {random_template_id_2}")
@@ -646,9 +646,11 @@ def get_model_providers():
     }
     return default_providers
 
-def get_random_template_v2(db: db_dependency, exclude_template_id: List[str]):
+def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], challenge_id: str):
     try:
-        templates = db.query(TemplateV2).filter(TemplateV2.id.not_in(exclude_template_id)).all()
+        templates = db.query(TemplateV2).filter(TemplateV2.id.not_in(exclude_template_id), TemplateV2.challenge_id == challenge_id).all()
+        if not templates:
+            raise HTTPException(status_code=400, detail="Not enough templates found for the challenge")
         return random.choice(templates).id
     except Exception as e:
         logger.error(f"Error getting random template: {str(e)}")

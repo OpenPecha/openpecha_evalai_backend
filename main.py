@@ -17,7 +17,23 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 # Import routers AFTER loading environment variables
-from routers import user, challenge, submission, result, category, model, file_upload, translation, tools, reports, template, arena_challenge, template_v2, translate_v2, arena_ranking
+from routers import (
+    user, 
+    challenge, 
+    submission, 
+    result, 
+    category, 
+    model, 
+    file_upload, 
+    translation, 
+    tools, reports, 
+    template, 
+    arena_challenge, 
+    template_v2, 
+    translate_v2, 
+    arena_ranking,
+    text_category
+)
 
 # Templates setup
 templates = Jinja2Templates(directory="templates")
@@ -154,11 +170,6 @@ async def download_sample(filename: str):
 
 
 
-
-
-
-
-
 app.include_router(user.router)
 app.include_router(category.router)
 app.include_router(model.router)
@@ -174,6 +185,7 @@ app.include_router(arena_challenge.router)
 app.include_router(template_v2.router)
 app.include_router(translate_v2.router)
 app.include_router(arena_ranking.router)
+app.include_router(text_category.router)
 
 
 if __name__ == "__main__":
