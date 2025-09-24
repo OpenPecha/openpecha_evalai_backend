@@ -32,6 +32,7 @@ def get_all_arena_challenges(db: db_dependency):
                 ArenaChallengeRead(
                     id=arena_challenge.id,
                     text_category=text_category[arena_challenge.text_category_id],
+                    user_id=arena_challenge.user_id,
                     challenge_name=arena_challenge.challenge_name,
                     from_language=arena_challenge.from_language,
                     to_language=arena_challenge.to_language
