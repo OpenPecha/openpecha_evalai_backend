@@ -2,6 +2,8 @@ from fastapi import APIRouter, status, HTTPException, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 
+from typing import List
+
 from models.text_category import TextCategory
 from schemas.text_category import (
     TextCategoryRead,
