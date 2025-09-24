@@ -547,6 +547,7 @@ def get_gloss(input_text: str, commentaries_and_sanskrit: dict, ucca: dict, mode
         raise HTTPException(status_code=500, detail=str(e))
 
 async def get_gloss_async(input_text: str, commentaries_and_sanskrit: dict, ucca: dict, model: str):
+    logger.info(f"Getting Gloss for input text: {input_text}")
     payload = {
         "input_text": input_text,
         "model_name": model,
@@ -582,6 +583,7 @@ def get_ucca(input_text: str, commentaries_and_sanskrit: dict, model: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 async def get_ucca_async(input_text: str, commentaries_and_sanskrit: dict, model: str):
+    logger.info(f"Getting UCCA for input text: {input_text}")
     payload = {
         "input_text": input_text,
         "model_name": model,
