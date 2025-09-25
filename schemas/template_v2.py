@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
-from schemas.user import UserBase
+from schemas.user import UserBaseMinimal
 
 
 class TemplateV2Read(BaseModel):
@@ -16,6 +16,7 @@ class TemplateV2Read(BaseModel):
     to_language: str
     created_at: datetime
     updated_at: datetime
+    created_by: str
 
 class TemplateV2Create(BaseModel):
     id: Optional[str] = None
@@ -23,10 +24,7 @@ class TemplateV2Create(BaseModel):
     template: str
     challenge_id: str
 
-class TemplateV2WithUser(BaseModel):
-    user_detail: UserBase
-    template_detail: TemplateV2Read
 
 class TemplateV2ListResponse(BaseModel):
     total_count: int
-    items: List[TemplateV2WithUser]
+    items: List[TemplateV2Read]

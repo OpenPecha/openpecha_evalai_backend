@@ -11,13 +11,12 @@ from models.user import User
 from auth import get_current_active_user
 
 
-from schemas.user import UserBase
+from schemas.user import UserBase,UserBaseMinimal
 
 from models.template_v2 import TemplateV2
 from schemas.template_v2 import (
     TemplateV2Read,
     TemplateV2Create,
-    TemplateV2WithUser,
     TemplateV2ListResponse
 )
 
@@ -46,6 +45,10 @@ def get_all_template_v2(
         ).join(
             ArenaChallenge, TemplateV2.challenge_id == ArenaChallenge.id
         ).filter(TemplateV2.challenge_id == challenge_id)
+        
+        # Add creator filter if creator_id is provided
+        if creator_id:
+            base_query = base_query.filter(TemplateV2.user_id == creator_id)
 
         total_count = base_query.count()
 
@@ -59,16 +62,7 @@ def get_all_template_v2(
 
         for template, user, challenge in templates_with_users_and_challenges:
             items.append(
-                TemplateV2WithUser(
-                    user_detail=UserBase(
-                        username=user.username,
-                        first_name=user.first_name,
-                        last_name=user.last_name,
-                        email=user.email,
-                        picture=user.picture,
-                        role=user.role
-                    ),
-                    template_detail=TemplateV2Read(
+                    TemplateV2Read(
                         id=template.id,
                         template_name=template.template_name,
                         user_id=template.user_id,
@@ -79,10 +73,9 @@ def get_all_template_v2(
                         from_language=challenge.from_language,
                         to_language=challenge.to_language,
                         created_at=template.created_at,
-                        updated_at=template.updated_at
-                    )
-                )
-            )
+                        updated_at=template.updated_at,
+                        created_by=user.username
+                    ))
 
         return TemplateV2ListResponse(total_count=total_count, items=items)
 

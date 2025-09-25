@@ -12,6 +12,10 @@ class UserBase(BaseModel):
     picture: Optional[str] = Field(None, description="Profile picture url (optional)")
     role: str = Field(default='user', description="Role of the user")
 
+class UserBaseMinimal(BaseModel):
+    username: str = Field(..., description="Username derived from email")
+    email: str = Field(..., description="Email of the user")
+
 class UserCreate(UserBase):
     pass  # ID comes from authenticated token, not request body
 
