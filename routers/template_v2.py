@@ -83,7 +83,7 @@ def get_all_template_v2(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/create", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
 def create_template_v2(
     db: db_dependency, 
     template_v2: TemplateV2Create,
@@ -119,7 +119,7 @@ def create_template_v2(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.put("/update/{template_id}", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
+@router.put("/{template_id}", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
 def create_template_v2(
     db: db_dependency, 
     template_v2: TemplateV2Create,
@@ -157,7 +157,7 @@ def create_template_v2(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/delete/{template_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{template_id}", status_code=status.HTTP_200_OK)
 def delete_by_template_id(
     db: db_dependency,
     template_id: str = Path(..., description="This is the id of the template to delete"),
