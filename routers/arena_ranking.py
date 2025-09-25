@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-router = APIRouter(prefix="/arena/ranking", tags=["arena_ranking"])
+router = APIRouter(prefix="/arena/ranking", tags=["arena","ranking"])
 
 
 @router.get("", response_model=List[ArenaRankingAll], status_code=status.HTTP_200_OK)

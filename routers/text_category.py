@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-router = APIRouter(prefix="/arena/category", tags=["text_category"])
+router = APIRouter(prefix="/arena/category", tags=["arena","category"])
 
 @router.get("", response_model=List[TextCategoryRead], status_code=status.HTTP_200_OK)
 def get_all_text_categories(db: db_dependency):

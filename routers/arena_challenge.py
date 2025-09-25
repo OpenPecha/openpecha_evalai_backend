@@ -18,7 +18,7 @@ from schemas.arena_challenge import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/arena/challenge", tags=["arena_challenge"])
+router = APIRouter(prefix="/arena/challenge", tags=["arena","challenge"])
 
 NUMBER_OF_ITEMS_PER_PAGE = 9
 
@@ -82,7 +82,7 @@ def get_arena_challenge_by_query(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/create", response_model=ArenaChallengeRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ArenaChallengeRead, status_code=status.HTTP_201_CREATED)
 def create_arena_challenge(
     db: db_dependency,
     arena_challenge: ArenaChallengeCreate,
