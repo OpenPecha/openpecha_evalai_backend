@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-router = APIRouter(prefix="/arena_ranking", tags=["arena_ranking"])
+router = APIRouter(prefix="/arena/ranking", tags=["arena_ranking"])
 
 
-@router.get("/all", response_model=List[ArenaRankingAll], status_code=status.HTTP_200_OK)
+@router.get("", response_model=List[ArenaRankingAll], status_code=status.HTTP_200_OK)
 def get_all_arena_ranking(db: db_dependency):
     try:
         arena_ranking_all = db.query(EloRatingByModelAndTemplate, TemplateV2.template_name).join(

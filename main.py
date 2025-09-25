@@ -25,7 +25,7 @@ from routers import (
     category, 
     model, 
     file_upload, 
-    tools, reports, 
+    tools, 
     arena_challenge, 
     template_v2, 
     translate_v2, 
@@ -175,8 +175,10 @@ app.include_router(challenge.router)
 app.include_router(submission.router)
 app.include_router(result.router)
 app.include_router(tools.router)
-app.include_router(reports.router)
 app.include_router(file_upload.router) # for testing. you can comment out.
+
+
+
 app.include_router(arena_challenge.router)
 app.include_router(template_v2.router)
 app.include_router(translate_v2.router)

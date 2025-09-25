@@ -18,7 +18,7 @@ from schemas.arena_challenge import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/arena_challenge", tags=["arena_challenge"])
+router = APIRouter(prefix="/arena/challenge", tags=["arena_challenge"])
 
 NUMBER_OF_ITEMS_PER_PAGE = 9
 

@@ -22,7 +22,7 @@ from schemas.template_v2 import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/template_v2", tags=["template_v2"])
+router = APIRouter(prefix="/arena/template", tags=["template_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 

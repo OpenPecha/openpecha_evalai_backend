@@ -35,7 +35,7 @@ from auth import get_current_active_user
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/translate_v2", tags=["translate_v2"])
+router = APIRouter(prefix="/arena/translate", tags=["translate_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
