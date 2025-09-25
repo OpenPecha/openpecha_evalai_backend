@@ -137,26 +137,16 @@ def update_battle_winner(
         request.result
     )
 
-    update_battle_result(
-        db,
-        request.battle_result_id,
-        request.result,
-        current_user.id
-    )
-
-    return "Success"
-
-def update_battle_result(db: db_dependency, battle_result_id: str, result: ResultType, voter_user_id: str):
     try:
-        battle_result = db.query(BattleResult).filter(BattleResult.id == battle_result_id).first()
-        battle_result.voter_user_id = voter_user_id
-        battle_result.winner_status = result
+        battle_details.voter_user_id = current_user.id
+        battle_details.winner_status = request.result
         db.commit()
-        db.refresh(battle_result)
-        return battle_result
+        db.refresh(battle_details)
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=404, detail="Battle result not found")
+        raise HTTPException(status_code=500, detail="Not able to update battle details")
+
+    return "Success"
     
 
 def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, template_2_id: str, model_1: str, model_2: str, challenge_id: str, input_text: str, output_text_1: str, output_text_2: str, result: ResultType):
