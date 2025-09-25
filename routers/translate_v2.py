@@ -39,7 +39,7 @@ router = APIRouter(prefix="/translate_v2", tags=["translate_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-LANGGRAPH_URL = os.getenv("LANGGRAPH_URL", "http://127.0.0.1:8001")
+LANGGRAPH_URL = os.getenv("LANGGRAPH_URL", "https://eval-api.pecha.ai")
 
 _commentary_cache: Dict[str, List[dict]] = {}
 
@@ -112,6 +112,8 @@ def update_battle_winner(
     except Exception:
         raise HTTPException(status_code=404, detail="Battle result not found")
 
+    logger.info(f"battle_details: {battle_details}")
+
     template_1_id = battle_details.template_A_id
     template_2_id = battle_details.template_B_id
     
@@ -139,7 +141,7 @@ def update_battle_winner(
 
     try:
         battle_details.voter_user_id = current_user.id
-        battle_details.winner_status = request.result
+        battle_details.winner_status = request.result.value
         db.commit()
         db.refresh(battle_details)
     except Exception:
