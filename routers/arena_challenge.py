@@ -57,6 +57,7 @@ def get_arena_challenge_by_query(
         if challenge_name is not None:
             query = query.filter(ArenaChallenge.challenge_name.ilike(f"%{challenge_name}%"))
         total_count = query.count()
+        total_count = total_count//2 + total_count%2
         arena_challenge = query.offset(skip).limit(limit).all()
         text_category: Dict[str, str] = get_text_category(db)
         items = []
