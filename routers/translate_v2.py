@@ -49,6 +49,10 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
     random_template_id_1 = request.template_id if request.template_id else get_random_template_v2(db, [], request.challenge_id)
     random_template_id_2 = get_random_template_v2(db, [random_template_id_1], request.challenge_id)
 
+    template_ids = [random_template_id_1, random_template_id_2]
+    random.shuffle(template_ids)
+    random_template_id_1, random_template_id_2 = template_ids
+
     logger.info(f"random_template_id_1: {random_template_id_1}")
     logger.info(f"random_template_id_2: {random_template_id_2}")
 
@@ -140,10 +144,12 @@ def update_battle_winner(
     )
 
     try:
+        logger.info(f"updating battle details: {request.result}")
         battle_details.voter_user_id = current_user.id
         battle_details.winner_status = request.result.value
         db.commit()
         db.refresh(battle_details)
+        logger.info(f"battle details updated: {battle_details}")
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Not able to update battle details")
