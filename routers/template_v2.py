@@ -114,7 +114,8 @@ def create_template_v2(
             from_language=challenge.from_language,
             to_language=challenge.to_language,
             created_at=new_template_v2.created_at,
-            updated_at=new_template_v2.updated_at
+            updated_at=new_template_v2.updated_at,
+            created_by=current_user.username
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -152,7 +153,8 @@ def create_template_v2(
             from_language=challenge.from_language,
             to_language=challenge.to_language,
             created_at=template.created_at,
-            updated_at=template.updated_at
+            updated_at=template.updated_at,
+            created_by=current_user.username
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
