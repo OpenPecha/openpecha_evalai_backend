@@ -12,7 +12,8 @@ from auth import get_current_active_user
 
 from schemas.arena_challenge import (
     ArenaChallengeRead,
-    ArenaChallengeCreate
+    ArenaChallengeCreate,
+    ArenaChallengeListResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def get_text_category(db: db_dependency) -> Dict[str, str]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
+@router.get("", response_model=ArenaChallengeListResponse, status_code=status.HTTP_200_OK)
 def get_arena_challenge_by_query(
     db: db_dependency,
     from_language: Optional[str] = Query(default=None, description="From language"),
@@ -54,12 +55,13 @@ def get_arena_challenge_by_query(
         if text_category_id is not None:
             query = query.filter(ArenaChallenge.text_category_id == text_category_id)
         if challenge_name is not None:
-            query = query.filter(ArenaChallenge.challenge_name.startswith(challenge_name))
+            query = query.filter(ArenaChallenge.challenge_name.ilike(f"%{challenge_name}%"))
+        total_count = query.count()
         arena_challenge = query.offset(skip).limit(limit).all()
         text_category: Dict[str, str] = get_text_category(db)
-        response = []
+        items = []
         for arena_challenge in arena_challenge:
-            response.append(
+            items.append(
                 ArenaChallengeRead(
                     id=arena_challenge.id,
                     text_category=text_category[arena_challenge.text_category_id],
@@ -69,7 +71,7 @@ def get_arena_challenge_by_query(
                     to_language=arena_challenge.to_language
                 )
             )
-        return response
+        return ArenaChallengeListResponse(total_count=total_count, items=items)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

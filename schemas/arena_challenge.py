@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 class ArenaChallengeRead(BaseModel):
     id: str
@@ -15,3 +15,7 @@ class ArenaChallengeCreate(BaseModel):
     from_language: str
     to_language: str
     challenge_name: str
+
+class ArenaChallengeListResponse(BaseModel):
+    total_count: int
+    items: List[ArenaChallengeRead]

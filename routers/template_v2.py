@@ -17,7 +17,8 @@ from models.template_v2 import TemplateV2
 from schemas.template_v2 import (
     TemplateV2Read,
     TemplateV2Create,
-    TemplateV2WithUser
+    TemplateV2WithUser,
+    TemplateV2ListResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/template_v2", tags=["template_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-@router.get("/all", response_model=List[TemplateV2WithUser], status_code=status.HTTP_200_OK)
+@router.get("/all", response_model=TemplateV2ListResponse, status_code=status.HTTP_200_OK)
 def get_all_template_v2(
     db: db_dependency,
     challenge_id: str = Query(..., description="This is the challenge id of the template"),
@@ -37,18 +38,22 @@ def get_all_template_v2(
         skip = max(0, (page_number - 1) * 10)
         limit = 10
 
-        templates_with_users_and_challenges = db.query(TemplateV2, User, ArenaChallenge).join(
+        base_query = db.query(TemplateV2, User, ArenaChallenge).join(
             User, TemplateV2.user_id == User.id
         ).join(
             ArenaChallenge, TemplateV2.challenge_id == ArenaChallenge.id
-        ).filter(TemplateV2.challenge_id == challenge_id).offset(skip).limit(limit).all()
+        ).filter(TemplateV2.challenge_id == challenge_id)
+
+        total_count = base_query.count()
+
+        templates_with_users_and_challenges = base_query.offset(skip).limit(limit).all()
 
         text_category: Dict[str, str] = get_text_category(db)
 
-        response = []
+        items = []
 
         for template, user, challenge in templates_with_users_and_challenges:
-            response.append(
+            items.append(
                 TemplateV2WithUser(
                     user_detail=UserBase(
                         username=user.username,
@@ -74,7 +79,7 @@ def get_all_template_v2(
                 )
             )
 
-        return response
+        return TemplateV2ListResponse(total_count=total_count, items=items)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -167,7 +172,7 @@ def delete_by_template_id(
         db.delete(template)
         db.commit()
         return {"message": "Template deleted successfully"}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=404, detail="Template not found in database")
 
 def get_template_response_by_username_and_challenge_id(db: db_dependency, response: List[TemplateV2], text_category: Dict[str, str]):

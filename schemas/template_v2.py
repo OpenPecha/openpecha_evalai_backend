@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from schemas.user import UserBase
 
 
@@ -26,3 +26,7 @@ class TemplateV2Create(BaseModel):
 class TemplateV2WithUser(BaseModel):
     user_detail: UserBase
     template_detail: TemplateV2Read
+
+class TemplateV2ListResponse(BaseModel):
+    total_count: int
+    items: List[TemplateV2WithUser]
