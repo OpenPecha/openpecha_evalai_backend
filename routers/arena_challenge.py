@@ -21,27 +21,6 @@ router = APIRouter(prefix="/arena_challenge", tags=["arena_challenge"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-# @router.get("/all", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
-# def get_all_arena_challenges(db: db_dependency):
-#     try:
-#         text_category: Dict[str, str] = get_text_category(db)
-#         arena_challenge = db.query(ArenaChallenge).all()
-#         response = []
-#         for arena_challenge in arena_challenge:
-#             response.append(
-#                 ArenaChallengeRead(
-#                     id=arena_challenge.id,
-#                     text_category=text_category[arena_challenge.text_category_id],
-#                     user_id=arena_challenge.user_id,
-#                     challenge_name=arena_challenge.challenge_name,
-#                     from_language=arena_challenge.from_language,
-#                     to_language=arena_challenge.to_language
-#                 )
-#             )
-#         return response
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
 def get_text_category(db: db_dependency) -> Dict[str, str]:
     text_category_by_id = {}
     try:
@@ -60,7 +39,12 @@ def get_arena_challenge_by_query(
     to_language: Optional[str] = Query(default=None, description="To language"),
     text_category_id: Optional[str] = Query(default=None, description="Text category id"),
     challenge_name: Optional[str] = Query(default=None, description="Challenge name"),
+    page_number: Optional[int] = Query(default=1, description="Page number")
 ):
+
+    skip = max(0, (page_number - 1) * 2)
+    limit = 2
+
     try:
         query = db.query(ArenaChallenge)
         if from_language is not None:
@@ -71,7 +55,7 @@ def get_arena_challenge_by_query(
             query = query.filter(ArenaChallenge.text_category_id == text_category_id)
         if challenge_name is not None:
             query = query.filter(ArenaChallenge.challenge_name == challenge_name)
-        arena_challenge = query.all()
+        arena_challenge = query.offset(skip).limit(limit).all()
         text_category: Dict[str, str] = get_text_category(db)
         response = []
         for arena_challenge in arena_challenge:
