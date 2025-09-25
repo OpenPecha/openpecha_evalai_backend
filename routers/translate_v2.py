@@ -104,7 +104,7 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
     )
 
 
-@router.put("/update_battle_winner", status_code=status.HTTP_200_OK)
+@router.put("/battle_winner", status_code=status.HTTP_200_OK)
 def update_battle_winner(
     db: db_dependency, 
     request: UpdateBattleWinnerRequest,
