@@ -28,7 +28,7 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 NUMBER_OF_ITEMS_PER_PAGE = 9
 
-@router.get("/all", response_model=TemplateV2ListResponse, status_code=status.HTTP_200_OK)
+@router.get("/", response_model=TemplateV2ListResponse, status_code=status.HTTP_200_OK)
 def get_all_template_v2(
     db: db_dependency,
     challenge_id: str = Query(..., description="This is the challenge id of the template"),
