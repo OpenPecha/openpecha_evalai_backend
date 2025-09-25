@@ -15,6 +15,8 @@ class EloRatingByTemplate(Base):
     elo_rating = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+    __table_args__ = (UniqueConstraint('template_id', 'challenge_id', name='_template_challenge_uc'),)
     
 
 class EloRatingByModel(Base):
@@ -30,6 +32,7 @@ class EloRatingByModel(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     
+    __table_args__ = (UniqueConstraint('model_name', 'challenge_id', name='_model_challenge_uc'),)
 
 class EloRatingByModelAndTemplate(Base):
 
