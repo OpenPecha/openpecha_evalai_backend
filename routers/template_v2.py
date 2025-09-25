@@ -45,7 +45,8 @@ def get_all_template_v2(
         ).filter(TemplateV2.challenge_id == challenge_id)
 
         total_count = base_query.count()
-        total_count = total_count // 2 + total_count % 2
+
+        total_count = total_count // 10 + (total_count % 10 > 0)
 
         templates_with_users_and_challenges = base_query.offset(skip).limit(limit).all()
 
