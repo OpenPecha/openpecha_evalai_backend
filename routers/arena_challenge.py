@@ -48,9 +48,9 @@ def get_arena_challenge_by_query(
     try:
         query = db.query(ArenaChallenge)
         if from_language is not None:
-            query = query.filter(ArenaChallenge.from_language == from_language)
+            query = query.filter(ArenaChallenge.from_language.ilike(from_language))
         if to_language is not None:
-            query = query.filter(ArenaChallenge.to_language == to_language)
+            query = query.filter(ArenaChallenge.to_language.ilike(to_language))
         if text_category_id is not None:
             query = query.filter(ArenaChallenge.text_category_id == text_category_id)
         if challenge_name is not None:
