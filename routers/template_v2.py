@@ -27,7 +27,7 @@ router = APIRouter(prefix="/template_v2", tags=["template_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-NUMBER_OF_ITEMS_PER_PAGE = 10
+NUMBER_OF_ITEMS_PER_PAGE = 9
 
 @router.get("/all", response_model=TemplateV2ListResponse, status_code=status.HTTP_200_OK)
 def get_all_template_v2(
@@ -37,8 +37,8 @@ def get_all_template_v2(
 ):
     try:
 
-        skip = max(0, (page_number - 1) * 10)
-        limit = 10
+        skip = max(0, (page_number - 1) * NUMBER_OF_ITEMS_PER_PAGE)
+        limit = NUMBER_OF_ITEMS_PER_PAGE
 
         base_query = db.query(TemplateV2, User, ArenaChallenge).join(
             User, TemplateV2.user_id == User.id
@@ -48,7 +48,7 @@ def get_all_template_v2(
 
         total_count = base_query.count()
 
-        total_count = total_count // 10 + (total_count % 10 > 0)
+        total_count = total_count // NUMBER_OF_ITEMS_PER_PAGE + (total_count % NUMBER_OF_ITEMS_PER_PAGE > 0)
 
         templates_with_users_and_challenges = base_query.offset(skip).limit(limit).all()
 
