@@ -33,7 +33,8 @@ NUMBER_OF_ITEMS_PER_PAGE = 9
 def get_all_template_v2(
     db: db_dependency,
     challenge_id: str = Query(..., description="This is the challenge id of the template"),
-    page_number: int = Query(1, description="This is the page number")
+    page_number: int = Query(1, description="This is the page number"),
+    creator_id: str = Query(None, description="Optional creator user id to filter templates by creator")
 ):
     try:
 
