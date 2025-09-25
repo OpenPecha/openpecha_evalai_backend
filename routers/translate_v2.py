@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from database import get_db
+from database import get_db, SessionLocal
 from typing import Annotated, List, Dict
 import logging
 import random
@@ -108,7 +108,8 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
 def update_battle_winner(
     db: db_dependency, 
     request: UpdateBattleWinnerRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    background_tasks: BackgroundTasks = None
 ):
     
     try:
@@ -130,19 +131,6 @@ def update_battle_winner(
     output_text_1 = battle_details.output_text_A
     output_text_2 = battle_details.output_text_B
 
-    calculate_and_store_elo_rating(
-        db,
-        template_1_id,
-        template_2_id,
-        model_1,
-        model_2,
-        challenge_id,
-        input_text,
-        output_text_1,
-        output_text_2,
-        request.result
-    )
-
     try:
         logger.info(f"updating battle details: {request.result}")
         battle_details.voter_user_id = current_user.id
@@ -153,6 +141,53 @@ def update_battle_winner(
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Not able to update battle details")
+
+    # Schedule ELO calculation in the background with a fresh DB session
+    def run_elo_calc_in_background(
+        template_1_id: str,
+        template_2_id: str,
+        model_1: str,
+        model_2: str,
+        challenge_id: str,
+        input_text: str,
+        output_text_1: str,
+        output_text_2: str,
+        result_value: str
+    ):
+        db_local = SessionLocal()
+        try:
+            logger.info("Starting background ELO calculation")
+            calculate_and_store_elo_rating(
+                db_local,
+                template_1_id,
+                template_2_id,
+                model_1,
+                model_2,
+                challenge_id,
+                input_text,
+                output_text_1,
+                output_text_2,
+                ResultType(result_value)
+            )
+            logger.info("Background ELO calculation finished")
+        except Exception as e:
+            logger.error(f"Background ELO calculation failed: {str(e)}")
+        finally:
+            db_local.close()
+
+    if background_tasks is not None:
+        background_tasks.add_task(
+            run_elo_calc_in_background,
+            template_1_id,
+            template_2_id,
+            model_1,
+            model_2,
+            challenge_id,
+            input_text,
+            output_text_1,
+            output_text_2,
+            request.result.value
+        )
 
     return "Success"
     
