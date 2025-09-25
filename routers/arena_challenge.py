@@ -56,7 +56,7 @@ def get_text_category(db: db_dependency) -> Dict[str, str]:
 @router.get("", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
 def get_arena_challenge_by_query(
     db: db_dependency,
-    from_language: Optional[str] = Query(default="Tibetan", description="From language"),
+    from_language: Optional[str] = Query(default=None, description="From language"),
     to_language: Optional[str] = Query(default=None, description="To language"),
     text_category_id: Optional[str] = Query(default=None, description="Text category id"),
     challenge_name: Optional[str] = Query(default=None, description="Challenge name"),
