@@ -12,7 +12,7 @@ class EloRatingByTemplate(Base):
     challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     input_text = Column(String)
     output_text = Column(String)
-    elo_rating = Column(Float, default=0.0, nullable=False)
+    elo_rating = Column(Float, default=1000.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
 
@@ -28,7 +28,7 @@ class EloRatingByModel(Base):
     challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     input_text = Column(String)
     output_text = Column(String)
-    elo_rating = Column(Float, default=0.0, nullable=False)
+    elo_rating = Column(Float, default=1000.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     
@@ -44,7 +44,7 @@ class EloRatingByModelAndTemplate(Base):
     challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     input_text = Column(String)
     output_text = Column(String)
-    elo_rating = Column(Float, default=0.0, nullable=False)
+    elo_rating = Column(Float, default=1000.0, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
     
