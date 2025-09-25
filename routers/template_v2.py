@@ -168,7 +168,7 @@ def delete_by_template_id(
         db.commit()
         return {"message": "Template deleted successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=404, detail="Template not found in database")
 
 def get_template_response_by_username_and_challenge_id(db: db_dependency, response: List[TemplateV2], text_category: Dict[str, str]):
     templates = []
