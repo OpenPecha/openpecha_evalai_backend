@@ -21,26 +21,26 @@ router = APIRouter(prefix="/arena_challenge", tags=["arena_challenge"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-@router.get("/all", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
-def get_all_arena_challenges(db: db_dependency):
-    try:
-        text_category: Dict[str, str] = get_text_category(db)
-        arena_challenge = db.query(ArenaChallenge).all()
-        response = []
-        for arena_challenge in arena_challenge:
-            response.append(
-                ArenaChallengeRead(
-                    id=arena_challenge.id,
-                    text_category=text_category[arena_challenge.text_category_id],
-                    user_id=arena_challenge.user_id,
-                    challenge_name=arena_challenge.challenge_name,
-                    from_language=arena_challenge.from_language,
-                    to_language=arena_challenge.to_language
-                )
-            )
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.get("/all", response_model=List[ArenaChallengeRead], status_code=status.HTTP_200_OK)
+# def get_all_arena_challenges(db: db_dependency):
+#     try:
+#         text_category: Dict[str, str] = get_text_category(db)
+#         arena_challenge = db.query(ArenaChallenge).all()
+#         response = []
+#         for arena_challenge in arena_challenge:
+#             response.append(
+#                 ArenaChallengeRead(
+#                     id=arena_challenge.id,
+#                     text_category=text_category[arena_challenge.text_category_id],
+#                     user_id=arena_challenge.user_id,
+#                     challenge_name=arena_challenge.challenge_name,
+#                     from_language=arena_challenge.from_language,
+#                     to_language=arena_challenge.to_language
+#                 )
+#             )
+#         return response
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 def get_text_category(db: db_dependency) -> Dict[str, str]:
     text_category_by_id = {}
