@@ -54,7 +54,7 @@ def get_arena_challenge_by_query(
         if text_category_id is not None:
             query = query.filter(ArenaChallenge.text_category_id == text_category_id)
         if challenge_name is not None:
-            query = query.filter(ArenaChallenge.challenge_name == challenge_name)
+            query = query.filter(ArenaChallenge.challenge_name.startswith(challenge_name))
         arena_challenge = query.offset(skip).limit(limit).all()
         text_category: Dict[str, str] = get_text_category(db)
         response = []
