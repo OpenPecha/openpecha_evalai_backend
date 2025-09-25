@@ -27,6 +27,8 @@ router = APIRouter(prefix="/template_v2", tags=["template_v2"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+NUMBER_OF_ITEMS_PER_PAGE = 10
+
 @router.get("/all", response_model=TemplateV2ListResponse, status_code=status.HTTP_200_OK)
 def get_all_template_v2(
     db: db_dependency,

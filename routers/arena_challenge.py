@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/arena_challenge", tags=["arena_challenge"])
 
+NUMBER_OF_ITEMS_PER_PAGE = 2
+
 db_dependency = Annotated[Session, Depends(get_db)]
 
 def get_text_category(db: db_dependency) -> Dict[str, str]:
@@ -43,8 +45,8 @@ def get_arena_challenge_by_query(
     page_number: Optional[int] = Query(default=1, description="Page number")
 ):
 
-    skip = max(0, (page_number - 1) * 2)
-    limit = 2
+    skip = max(0, (page_number - 1) * NUMBER_OF_ITEMS_PER_PAGE)
+    limit = NUMBER_OF_ITEMS_PER_PAGE
 
     try:
         query = db.query(ArenaChallenge)
@@ -56,10 +58,14 @@ def get_arena_challenge_by_query(
             query = query.filter(ArenaChallenge.text_category_id == text_category_id)
         if challenge_name is not None:
             query = query.filter(ArenaChallenge.challenge_name.ilike(f"%{challenge_name}%"))
+        
         total_count = query.count()
-        total_count = total_count//2 + (total_count%2 > 0)
+        total_count = total_count // NUMBER_OF_ITEMS_PER_PAGE + (total_count % NUMBER_OF_ITEMS_PER_PAGE > 0)
+        
         arena_challenge = query.offset(skip).limit(limit).all()
+        
         text_category: Dict[str, str] = get_text_category(db)
+        
         items = []
         for arena_challenge in arena_challenge:
             items.append(
