@@ -44,7 +44,7 @@ def get_all_template_v2(
             User, TemplateV2.user_id == User.id
         ).join(
             ArenaChallenge, TemplateV2.challenge_id == ArenaChallenge.id
-        ).filter(TemplateV2.challenge_id == challenge_id)
+        ).filter(TemplateV2.challenge_id == challenge_id).filter(TemplateV2.hidden == False)
         
         # Add creator filter if creator_id is provided
         if creator_id:
@@ -131,29 +131,34 @@ def create_template_v2(
         template = db.query(TemplateV2).filter(TemplateV2.id == template_id).first()
         if template.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="You are not authorized to update this template")
-        template.template_name = template_v2.template_name
-        template.template = template_v2.template
-        template.challenge_id = template_v2.challenge_id
-        template.user_id = current_user.id
+        
+        template.hidden = True
+        
+        new_template_v2 = TemplateV2(
+            template_name=template_v2.template_name,
+            template=template_v2.template,
+            challenge_id=template_v2.challenge_id,
+            user_id=current_user.id
+        )
+        db.add(new_template_v2)
         db.commit()
-        db.refresh(template)
-        logger.info(f"Template updated: {template}")
-
-        challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == template.challenge_id).first()
+        db.refresh(new_template_v2)
+        logger.info(f"New template created: {new_template_v2}")
+        challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == new_template_v2.challenge_id).first()
         text_category: Dict[str, str] = get_text_category(db)
 
         return TemplateV2Read(
-            id=template.id,
-            template_name=template.template_name,
-            user_id=template.user_id,
-            template=template.template,
+            id=new_template_v2.id,
+            template_name=new_template_v2.template_name,
+            user_id=new_template_v2.user_id,
+            template=new_template_v2.template,
             challenge_id=challenge.id,
             text_category=text_category[challenge.text_category_id],
             challenge_name=challenge.challenge_name,
             from_language=challenge.from_language,
             to_language=challenge.to_language,
-            created_at=template.created_at,
-            updated_at=template.updated_at,
+            created_at=new_template_v2.created_at,
+            updated_at=new_template_v2.updated_at,
             created_by=current_user.username
         )
     except Exception as e:
@@ -169,8 +174,9 @@ def delete_by_template_id(
         template = db.query(TemplateV2).filter(TemplateV2.id == template_id).first()
         if template.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="You are not authorized to delete this template")
-        db.delete(template)
+        template.hidden = True
         db.commit()
+        db.refresh(template)
         return {"message": "Template deleted successfully"}
     except Exception:
         raise HTTPException(status_code=404, detail="Template not found in database")

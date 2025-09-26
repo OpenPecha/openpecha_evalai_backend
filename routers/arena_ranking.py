@@ -34,7 +34,7 @@ def get_all_arena_ranking(db: db_dependency):
     try:
         arena_ranking_all = db.query(EloRatingByModelAndTemplate, TemplateV2.template_name).join(
             TemplateV2, EloRatingByModelAndTemplate.template_id == TemplateV2.id
-        ).all()
+        ).filter(TemplateV2.hidden == False).all()
 
         text_category: Dict[str, str] = get_text_category(db)
 
@@ -68,7 +68,7 @@ def get_arena_ranking_by_challenge_id(
         if ranking_by == RankingBy.COMBINED:
             arena_ranking_db = db.query(EloRatingByModelAndTemplate, TemplateV2.template_name).join(
                 TemplateV2, EloRatingByModelAndTemplate.template_id == TemplateV2.id
-            ).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).all()
+            ).filter(EloRatingByModelAndTemplate.challenge_id == challenge_id).filter(TemplateV2.hidden == False).all()
             arena_ranking_list = [
                 ArenaRanking(
                     template_name=template_name,
@@ -79,7 +79,7 @@ def get_arena_ranking_by_challenge_id(
         elif ranking_by == RankingBy.TEMPLATE:
             arena_ranking_db = db.query(EloRatingByTemplate, TemplateV2.template_name).join(
                 TemplateV2, EloRatingByTemplate.template_id == TemplateV2.id
-            ).filter(EloRatingByTemplate.challenge_id == challenge_id).all()
+            ).filter(EloRatingByTemplate.challenge_id == challenge_id).filter(TemplateV2.hidden == False).all()
             arena_ranking_list = [
                 ArenaRanking(
                     template_name=template_name,
@@ -88,7 +88,7 @@ def get_arena_ranking_by_challenge_id(
                 ) for rating, template_name in arena_ranking_db
             ]
         elif ranking_by == RankingBy.MODEL:
-            arena_ranking_db = db.query(EloRatingByModel).filter(EloRatingByModel.challenge_id == challenge_id).all()
+            arena_ranking_db = db.query(EloRatingByModel).filter(EloRatingByModel.challenge_id == challenge_id).filter(TemplateV2.hidden == False).all()
             arena_ranking_list = [
                 ArenaRanking(
                     template_name=None,
