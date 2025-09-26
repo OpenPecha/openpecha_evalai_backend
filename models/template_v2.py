@@ -12,7 +12,7 @@ class TemplateV2(Base):
     template_name = Column(String, nullable=False)
     user_id = Column(String, ForeignKey("user.id"), nullable=False)
     template = Column(String)
-    hidden = Column(Boolean, default=False)
+    hidden = Column(Boolean, nullable=True, default=False)
     challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
