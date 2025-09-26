@@ -44,7 +44,7 @@ def get_all_template_v2(
             User, TemplateV2.user_id == User.id
         ).join(
             ArenaChallenge, TemplateV2.challenge_id == ArenaChallenge.id
-        ).filter(TemplateV2.challenge_id == challenge_id).filter(TemplateV2.hidden == False)
+        ).filter(TemplateV2.challenge_id == challenge_id).filter((TemplateV2.hidden == False) | (TemplateV2.hidden == None))
         
         # Add creator filter if creator_id is provided
         if creator_id:

@@ -727,7 +727,7 @@ def get_model_providers():
 
 def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], challenge_id: str):
     try:
-        templates = db.query(TemplateV2).filter(TemplateV2.id.not_in(exclude_template_id), TemplateV2.challenge_id == challenge_id).filter(TemplateV2.hidden == False).all()
+        templates = db.query(TemplateV2).filter(TemplateV2.id.not_in(exclude_template_id), TemplateV2.challenge_id == challenge_id).filter((TemplateV2.hidden == False) | (TemplateV2.hidden == None)).all()
         if not templates:
             raise HTTPException(status_code=400, detail="Not enough templates found for the challenge")
         return random.choice(templates).id
