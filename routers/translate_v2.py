@@ -127,10 +127,6 @@ def update_battle_winner(
 
     challenge_id = battle_details.challenge_id
 
-    input_text = battle_details.input_text
-    output_text_1 = battle_details.output_text_A
-    output_text_2 = battle_details.output_text_B
-
     try:
         logger.info(f"updating battle details: {request.result}")
         battle_details.voter_user_id = current_user.id
@@ -149,9 +145,6 @@ def update_battle_winner(
         model_1: str,
         model_2: str,
         challenge_id: str,
-        input_text: str,
-        output_text_1: str,
-        output_text_2: str,
         result_value: str
     ):
         db_local = SessionLocal()
@@ -164,9 +157,6 @@ def update_battle_winner(
                 model_1,
                 model_2,
                 challenge_id,
-                input_text,
-                output_text_1,
-                output_text_2,
                 ResultType(result_value)
             )
             logger.info("Background ELO calculation finished")
@@ -183,16 +173,13 @@ def update_battle_winner(
             model_1,
             model_2,
             challenge_id,
-            input_text,
-            output_text_1,
-            output_text_2,
             request.result.value
         )
 
     return "Success"
     
 
-def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, template_2_id: str, model_1: str, model_2: str, challenge_id: str, input_text: str, output_text_1: str, output_text_2: str, result: ResultType):
+def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, template_2_id: str, model_1: str, model_2: str, challenge_id: str, result: ResultType):
 
     try:
         elo_rating_by_template_1 = db.query(EloRatingByTemplate).filter(
@@ -221,32 +208,24 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
             elo_rating_by_template_1 = EloRatingByTemplate(
                 template_id=template_1_id,
                 challenge_id=challenge_id,
-                input_text=input_text,
-                output_text=output_text_1,
             )
             db_add_list.append(elo_rating_by_template_1)
         if elo_rating_by_template_2 is None:
             elo_rating_by_template_2 = EloRatingByTemplate(
                 template_id=template_2_id,
                 challenge_id=challenge_id,
-                input_text=input_text,
-                output_text=output_text_2,
             )
             db_add_list.append(elo_rating_by_template_2)
         if elo_rating_by_model_1 is None:
             elo_rating_by_model_1 = EloRatingByModel(
                 model_name=model_1,
                 challenge_id=challenge_id,
-                input_text=input_text,
-                output_text=output_text_1,
             )
             db_add_list.append(elo_rating_by_model_1)
         if elo_rating_by_model_2 is None:
             elo_rating_by_model_2 = EloRatingByModel(
                 model_name=model_2,
                 challenge_id=challenge_id,
-                input_text=input_text,
-                output_text=output_text_2,
             )
             db_add_list.append(elo_rating_by_model_2)
         if elo_rating_1_by_template_and_model is None:
@@ -254,8 +233,6 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
                 model_name=model_1,
                 template_id=template_1_id,
                 challenge_id=challenge_id,
-                input_text=input_text,
-                output_text=output_text_1,
             )
             db_add_list.append(elo_rating_1_by_template_and_model)
         if elo_rating_2_by_template_and_model is None:
@@ -263,8 +240,6 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
                 model_name=model_2,
                 template_id=template_2_id,
                 challenge_id=challenge_id,
-                input_text=input_text,
-                output_text=output_text_2,
             )
             db_add_list.append(elo_rating_2_by_template_and_model)
         
