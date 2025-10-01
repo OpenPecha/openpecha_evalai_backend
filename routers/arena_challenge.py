@@ -116,8 +116,8 @@ def create_arena_challenge(
 
 @router.get("/{challenge_id}", response_model=ArenaChallengeRead, status_code=status.HTTP_200_OK)
 def get_arena_challenge_by_id(
+    db: db_dependency,
     challenge_id: str = Path(..., description="Challenge ID"),
-    db: db_dependency = Depends(get_db)
 ):
     """
     Get a single arena challenge by its ID.
@@ -140,7 +140,7 @@ def get_arena_challenge_by_id(
             challenge_name=arena_challenge.challenge_name,
             from_language=arena_challenge.from_language,
             to_language=arena_challenge.to_language
-        )
+        )   
     except HTTPException:
         raise
     except Exception as e:
