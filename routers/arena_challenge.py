@@ -48,7 +48,7 @@ def get_template_counts(db: db_dependency, challenge_ids: List[str]) -> Dict[str
             func.count(TemplateV2.id).label('count')
         ).filter(
             TemplateV2.challenge_id.in_(challenge_ids),
-            TemplateV2.hidden == False
+            (TemplateV2.hidden == False) | (TemplateV2.hidden == None)
         ).group_by(TemplateV2.challenge_id).all()
         
         # Convert result to dictionary
