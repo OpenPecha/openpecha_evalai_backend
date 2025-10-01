@@ -82,6 +82,8 @@ def get_arena_challenge_by_query(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
 @router.post("", response_model=ArenaChallengeRead, status_code=status.HTTP_201_CREATED)
 def create_arena_challenge(
     db: db_dependency,
@@ -109,6 +111,40 @@ def create_arena_challenge(
             to_language=new_arena_challenge.to_language
         )
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{challenge_id}", response_model=ArenaChallengeRead, status_code=status.HTTP_200_OK)
+def get_arena_challenge_by_id(
+    challenge_id: str = Path(..., description="Challenge ID"),
+    db: db_dependency = Depends(get_db)
+):
+    """
+    Get a single arena challenge by its ID.
+    """
+    try:
+        arena_challenge = db.query(ArenaChallenge).filter(ArenaChallenge.id == challenge_id).first()
+        
+        if not arena_challenge:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Arena challenge with ID {challenge_id} not found"
+            )
+        
+        text_category: Dict[str, str] = get_text_category(db)
+        
+        return ArenaChallengeRead(
+            id=arena_challenge.id,
+            text_category=text_category[arena_challenge.text_category_id],
+            user_id=arena_challenge.user_id,
+            challenge_name=arena_challenge.challenge_name,
+            from_language=arena_challenge.from_language,
+            to_language=arena_challenge.to_language
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching arena challenge {challenge_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
