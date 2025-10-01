@@ -9,6 +9,7 @@ class ArenaChallengeRead(BaseModel):
     challenge_name: str
     from_language: str
     to_language: str
+    template_count: int = 0
 
 class ArenaChallengeCreate(BaseModel):
     text_category_id: str
