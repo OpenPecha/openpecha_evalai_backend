@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from enum import Enum
 
 class ResultType(Enum):
@@ -29,3 +29,8 @@ class UpdateBattleWinnerRequest(BaseModel):
     id_1: str
     id_2: str
     result: ResultType
+
+class StreamStep(BaseModel):
+    step: str
+    data: Dict[str, Any]
+    status: str  # "progress", "completed", "error"
