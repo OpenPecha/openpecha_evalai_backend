@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db, SessionLocal
@@ -203,25 +203,67 @@ async def translate_v2_stream(db: db_dependency, request: TranslateV2Request):
             yield f"data: {json.dumps(step_data.dict())}\n\n"
             await asyncio.sleep(0.1)
 
-            # Process both translation streams sequentially to ensure all steps are yielded
+            # Process both translation streams concurrently
             translation_1 = None
             translation_2 = None
             
-            # Process translation 1 stream
-            async for step in generate_translation_async_stream(db, model_1, template_1, request.input_text, "1"):
-                yield f"data: {json.dumps(step.dict())}\n\n"
-                await asyncio.sleep(0.05)
-                if step.step == "translation_1_generation" and step.status == "completed":
-                    translation_1 = step.data.get("translation")
+            # Create async generators for both translations
+            stream_1 = generate_translation_async_stream(db, model_1, template_1, request.input_text, "1")
+            stream_2 = generate_translation_async_stream(db, model_2, template_2, request.input_text, "2")
+            
+            # Use asyncio.Queue to merge both streams
+            queue = asyncio.Queue()
+            
+            async def stream_to_queue(stream, translation_id):
+                nonlocal translation_1, translation_2
+                try:
+                    async for step in stream:
+                        await queue.put((step, translation_id))
+                        if step.step == f"translation_{translation_id}_generation" and step.status == "completed":
+                            if translation_id == "1":
+                                translation_1 = step.data.get("translation")
+                            else:
+                                translation_2 = step.data.get("translation")
+                            
+                            # Yield individual translation completion immediately
+                            completion_step = StreamStep(
+                                step=f"translation_{translation_id}_ready",
+                                data={
+                                    "translation_id": translation_id,
+                                    "translation": step.data.get("translation"),
+                                    "model": model_1 if translation_id == "1" else model_2,
+                                    "template": template_1.template_name if translation_id == "1" else template_2.template_name,
+                                    "message": f"Translation {translation_id} completed"
+                                },
+                                status="completed"
+                            )
+                            await queue.put((completion_step, translation_id))
+                            break
+                except Exception as e:
+                    logger.error(f"Error in translation {translation_id} stream: {e}")
+            
+            # Start both streams concurrently
+            task_1 = asyncio.create_task(stream_to_queue(stream_1, "1"))
+            task_2 = asyncio.create_task(stream_to_queue(stream_2, "2"))
+            
+            # Process steps from the queue as they arrive (whichever is faster)
+            while translation_1 is None or translation_2 is None:
+                try:
+                    # Wait for a step with timeout
+                    step, translation_id = await asyncio.wait_for(queue.get(), timeout=2.0)
+                    yield f"data: {json.dumps(step.dict())}\n\n"
+                    await asyncio.sleep(0.05)
+                except asyncio.TimeoutError:
+                    # Check if both tasks are done
+                    if task_1.done() and task_2.done():
+                        break
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing queue: {e}")
                     break
             
-            # Process translation 2 stream
-            async for step in generate_translation_async_stream(db, model_2, template_2, request.input_text, "2"):
-                yield f"data: {json.dumps(step.dict())}\n\n"
-                await asyncio.sleep(0.05)
-                if step.step == "translation_2_generation" and step.status == "completed":
-                    translation_2 = step.data.get("translation")
-                    break
+            # Wait for both tasks to complete
+            await asyncio.gather(task_1, task_2, return_exceptions=True)
 
             # Translation generation completed
             step_data = StreamStep(
@@ -1084,3 +1126,47 @@ def get_random_model_v2(exclude_model:str = None):
     if exclude_model and model == exclude_model:
             return get_random_model_v2(exclude_model)
     return model
+
+
+@router.get("/suggest_model", status_code=status.HTTP_200_OK)
+async def suggest_models(
+    db: db_dependency,
+    source_text: str = Query(None, description="Source text to analyze for model suggestions"),
+    challenge_id: str = Query(None, description="Challenge ID for context")
+):
+    """
+    Suggest two models for translation comparison based on available models and ratings.
+    This endpoint is public and doesn't require authentication.
+    """
+    try:
+        # Get available models from the model providers
+        available_models = list(get_model_providers().keys())
+        
+        if len(available_models) < 2:
+            raise HTTPException(
+                status_code=400, 
+                detail="Not enough models available for comparison"
+            )
+        
+        # Select two different models randomly
+        model_a = random.choice(available_models)
+        remaining_models = [m for m in available_models if m != model_a]
+        model_b = random.choice(remaining_models)
+        
+        # Determine selection method
+        selection_method = "random"
+        if source_text:
+            # You could add more sophisticated logic here based on source text analysis
+            selection_method = "text_analysis"
+        
+        return {
+            "model_a": model_a,
+            "model_b": model_b,
+            "selection_method": selection_method,
+            "available_models_count": len(available_models),
+            "used_models": [model_a, model_b]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error suggesting models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
