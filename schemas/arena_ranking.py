@@ -15,7 +15,6 @@ class ChallengeDetails(BaseModel):
     to_language: str
 
 class ArenaRanking(BaseModel):
-    template_name: Optional[str] = None
     model_name: Optional[str] = None
     elo_rating: float
 

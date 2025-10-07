@@ -34,30 +34,31 @@ router = APIRouter(prefix="/arena/ranking", tags=["arena","ranking"])
 @router.get("", response_model=List[ArenaRankingAll], status_code=status.HTTP_200_OK)
 def get_all_arena_ranking(db: db_dependency):
     try:
-        arena_ranking_all = db.query(EloRatingByModelAndTemplate, TemplateV2.template_name).join(
-            TemplateV2, EloRatingByModelAndTemplate.template_id == TemplateV2.id
-        ).filter((TemplateV2.hidden == False) | (TemplateV2.hidden == None)).all()
+        arena_ranking_all = db.query(EloRatingByModel).all()
 
         text_category: Dict[str, str] = get_text_category(db)
 
         # Get valid challenge IDs from arena_challenge table
         valid_challenge_ids = {challenge.id for challenge in db.query(ArenaChallenge).all()}
         
+
         # Filter out ratings for non-existent challenges
-        filtered_arena_ranking = [
-            (rating, template_name) for rating, template_name in arena_ranking_all 
-            if rating.challenge_id in valid_challenge_ids
-        ]
+        filtered_arena_ranking = []
+        for elo_rating_by_model in arena_ranking_all:
+            if elo_rating_by_model.challenge_id in valid_challenge_ids:
+                filtered_arena_ranking.append((elo_rating_by_model.challenge_id, elo_rating_by_model.elo_rating, elo_rating_by_model.model_name))
+
         
-        ranking_by_challenge_id = get_ranking_by_challenge_id_with_template_names(filtered_arena_ranking)
+        ranking_by_challenge_id = get_ranking_by_challenge_id_with_model_names(filtered_arena_ranking)
+
 
         challenge_details_dict = get_challenge_details_dict(db, text_category)
         
         # Get battle frequencies from battle_result table
         frequency_dict = get_battle_frequencies(db)
         
-        response = generate_ranking_all_response_with_template_names(challenge_details_dict, ranking_by_challenge_id, frequency_dict)
-
+        response = generate_ranking_all_response_with_model_names(challenge_details_dict, ranking_by_challenge_id, frequency_dict)
+        
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -146,7 +147,7 @@ def generate_ranking_all_response(challenge_details_dict: Dict[str, ChallengeDet
         ))
     return response
 
-def generate_ranking_all_response_with_template_names(challenge_details_dict: Dict[str, ChallengeDetails], ranking_by_challenge_id, frequency_dict: Dict[str, int] = None):
+def generate_ranking_all_response_with_model_names(challenge_details_dict: Dict[str, ChallengeDetails], ranking_by_challenge_id, frequency_dict: Dict[str, int] = None):
     response = []
     if frequency_dict is None:
         frequency_dict = {}
@@ -161,11 +162,10 @@ def generate_ranking_all_response_with_template_names(challenge_details_dict: Di
             to_language=challenge_details["to_language"]
         )
         arena_ranking_model = []
-        for ranking, template_name in rankings:
+        for elo_rating, model_name in rankings:
             arena_ranking_model.append(ArenaRanking(
-                template_name=template_name,
-                model_name=ranking.model_name,
-                elo_rating=ranking.elo_rating
+                model_name=model_name,
+                elo_rating=elo_rating
             ))
         response.append(ArenaRankingAll(
             challenge_details=challenge_details_model,
@@ -202,13 +202,13 @@ def get_ranking_by_challenge_id(arena_ranking_all: List[EloRatingByModelAndTempl
         ranking_by_challenge_id[arena_ranking.challenge_id].append(arena_ranking)
     return ranking_by_challenge_id
 
-def get_ranking_by_challenge_id_with_template_names(arena_ranking_all):
+def get_ranking_by_challenge_id_with_model_names(arena_ranking_all):
     ranking_by_challenge_id = {}
-    for arena_ranking, template_name in arena_ranking_all:
-        if arena_ranking.challenge_id not in ranking_by_challenge_id:
-            ranking_by_challenge_id[arena_ranking.challenge_id] = []
-        # Create a tuple with the rating and template name
-        ranking_by_challenge_id[arena_ranking.challenge_id].append((arena_ranking, template_name))
+    for challenge_id, elo_rating, model_name in arena_ranking_all:
+        if challenge_id not in ranking_by_challenge_id:
+            ranking_by_challenge_id[challenge_id] = []
+        # Create a tuple with the rating and model name
+        ranking_by_challenge_id[challenge_id].append((elo_rating, model_name))
     return ranking_by_challenge_id
 
 def get_battle_frequencies(db: db_dependency) -> Dict[str, int]:
