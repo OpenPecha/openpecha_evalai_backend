@@ -22,3 +22,4 @@ class ArenaRanking(BaseModel):
 class ArenaRankingAll(BaseModel):
     challenge_details: ChallengeDetails
     arena_ranking: List[ArenaRanking]
+    frequency: int = 0  # Number of battles for this challenge

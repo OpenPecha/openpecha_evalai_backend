@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from database import get_db
 from typing import Annotated, Dict
 import logging
@@ -10,7 +11,8 @@ from models.template_v2 import TemplateV2
 from models.arena_rating import (
     EloRatingByTemplate,
     EloRatingByModel,
-    EloRatingByModelAndTemplate
+    EloRatingByModelAndTemplate,
+    BattleResult
 )
 from schemas.arena_ranking import (
     ChallengeDetails, 
@@ -51,7 +53,10 @@ def get_all_arena_ranking(db: db_dependency):
 
         challenge_details_dict = get_challenge_details_dict(db, text_category)
         
-        response = generate_ranking_all_response_with_template_names(challenge_details_dict, ranking_by_challenge_id)
+        # Get battle frequencies from battle_result table
+        frequency_dict = get_battle_frequencies(db)
+        
+        response = generate_ranking_all_response_with_template_names(challenge_details_dict, ranking_by_challenge_id, frequency_dict)
 
         return response
     except Exception as e:
@@ -141,8 +146,11 @@ def generate_ranking_all_response(challenge_details_dict: Dict[str, ChallengeDet
         ))
     return response
 
-def generate_ranking_all_response_with_template_names(challenge_details_dict: Dict[str, ChallengeDetails], ranking_by_challenge_id):
+def generate_ranking_all_response_with_template_names(challenge_details_dict: Dict[str, ChallengeDetails], ranking_by_challenge_id, frequency_dict: Dict[str, int] = None):
     response = []
+    if frequency_dict is None:
+        frequency_dict = {}
+    
     for challenge_id, rankings in ranking_by_challenge_id.items():
         challenge_details = challenge_details_dict[challenge_id]
         challenge_details_model = ChallengeDetails(
@@ -161,8 +169,12 @@ def generate_ranking_all_response_with_template_names(challenge_details_dict: Di
             ))
         response.append(ArenaRankingAll(
             challenge_details=challenge_details_model,
-            arena_ranking=arena_ranking_model
+            arena_ranking=arena_ranking_model,
+            frequency=frequency_dict.get(challenge_id, 0)
         ))
+    
+    response.sort(key=lambda x: x.frequency, reverse=True)
+    
     return response
 
 
@@ -198,3 +210,22 @@ def get_ranking_by_challenge_id_with_template_names(arena_ranking_all):
         # Create a tuple with the rating and template name
         ranking_by_challenge_id[arena_ranking.challenge_id].append((arena_ranking, template_name))
     return ranking_by_challenge_id
+
+def get_battle_frequencies(db: db_dependency) -> Dict[str, int]:
+    """
+    Get the count of battles (from battle_result table) grouped by challenge_id.
+    Returns a dictionary: {challenge_id: count}
+    """
+    try:
+        # Query to count battles per challenge_id
+        frequency_query = db.query(
+            BattleResult.challenge_id,
+            func.count(BattleResult.id).label('count')
+        ).group_by(BattleResult.challenge_id).all()
+        
+        # Convert to dictionary
+        frequency_dict = {challenge_id: count for challenge_id, count in frequency_query}
+        return frequency_dict
+    except Exception as e:
+        logger.error(f"Error getting battle frequencies: {str(e)}")
+        return {}
