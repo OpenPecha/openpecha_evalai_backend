@@ -495,7 +495,6 @@ def calculate_and_store_elo_rating(db: db_dependency, template_1_id: str, templa
         db.refresh(elo_rating_1_by_template_and_model)
         db.refresh(elo_rating_2_by_template_and_model)
 
-        logger.info(f"Batch inserted: elo_rating_by_template_1={elo_rating_by_template_1.id}, elo_rating_by_template_2={elo_rating_by_template_2.id}, elo_rating_by_model_1={elo_rating_by_model_1.id}, elo_rating_by_model_2={elo_rating_by_model_2.id}, elo_rating_1_by_template_and_model={elo_rating_1_by_template_and_model.id}, elo_rating_2_by_template_and_model={elo_rating_2_by_template_and_model.id}")
 
         new_rating_by_template_1, new_rating_by_template_2 = get_new_rating_for_both_challengers(
             elo_rating_by_template_1.elo_rating, 
@@ -643,7 +642,6 @@ def write_to_battle_result(db: db_dependency, random_template_id_1: str, random_
         # Refresh to get the generated IDs
         db.refresh(battle_result)
         
-        logger.info(f"Batch inserted: battle_result.id={battle_result.id}")
         return battle_result.id
     except Exception as e:
         db.rollback()
@@ -708,7 +706,6 @@ def generate_translation(db: db_dependency, model: str, template: TemplateV2, in
 async def generate_translation_async_stream(db: db_dependency, model: str, template: TemplateV2, input_text: str, translation_id: str) -> AsyncGenerator[StreamStep, None]:
     """Streaming version of generate_translation_async that yields each step"""
     try:
-        # Step 1: Analyze template requirements
         yield StreamStep(
             step=f"translation_{translation_id}_analysis",
             data={"message": f"Analyzing template requirements for {model}..."},
@@ -753,21 +750,12 @@ async def generate_translation_async_stream(db: db_dependency, model: str, templ
         if is_sanskrit_present:
             sanskrit = commentaries_and_sanskrit["sanskrit_text"]
         
-        if not commentaries_and_sanskrit:
-            yield StreamStep(
-                step=f"translation_{translation_id}_commentaries",
-                data={"error": "No commentaries and sanskrit found"},
-                status="error"
-            )
-            return
 
         yield StreamStep(
             step=f"translation_{translation_id}_commentaries",
             data={"commentaries_found": True},
             status="completed"
         )
-
-        # Step 3: Generate UCCA if required
         if is_ucca_present:
             yield StreamStep(
                 step=f"translation_{translation_id}_ucca",
@@ -784,7 +772,6 @@ async def generate_translation_async_stream(db: db_dependency, model: str, templ
                 status="completed"
             )
 
-        # Step 4: Generate Gloss if required
         if is_gloss_present:
             yield StreamStep(
                 step=f"translation_{translation_id}_gloss",
@@ -805,7 +792,6 @@ async def generate_translation_async_stream(db: db_dependency, model: str, templ
                 status="completed"
             )
 
-        # Step 5: Prepare translation payload
         yield StreamStep(
             step=f"translation_{translation_id}_payload",
             data={"message": f"Preparing translation payload for {model}..."},
@@ -1075,6 +1061,7 @@ def get_commentaries_and_sanskrit(input_text: str):
                 continue
             if is_fuzzy_match(input_text, root_display_text):
                 return entry
+    
     return None
 
 def is_fuzzy_match(input_text: str, root_display_text: str, threshold: float = 0.7) -> bool:
