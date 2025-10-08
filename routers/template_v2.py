@@ -83,6 +83,44 @@ def get_all_template_v2(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{template_id}", response_model=TemplateV2Read, status_code=status.HTTP_200_OK)
+def get_template_by_id(
+    db: db_dependency,
+    template_id: str = Path(..., description="This is the id of the template to retrieve")
+):
+    try:
+        # Query template with user and challenge information
+        template_with_user_and_challenge = db.query(TemplateV2, User, ArenaChallenge).join(
+            User, TemplateV2.user_id == User.id
+        ).join(
+            ArenaChallenge, TemplateV2.challenge_id == ArenaChallenge.id
+        ).filter(TemplateV2.id == template_id).filter((TemplateV2.hidden == False) | (TemplateV2.hidden == None)).first()
+        
+        if not template_with_user_and_challenge:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        template, user, challenge = template_with_user_and_challenge
+        text_category: Dict[str, str] = get_text_category(db)
+        
+        return TemplateV2Read(
+            id=template.id,
+            template_name=template.template_name,
+            user_id=template.user_id,
+            template=template.template,
+            challenge_id=template.challenge_id,
+            text_category=text_category.get(challenge.text_category_id, ""),
+            challenge_name=challenge.challenge_name,
+            from_language=challenge.from_language,
+            to_language=challenge.to_language,
+            created_at=template.created_at,
+            updated_at=template.updated_at,
+            created_by=user.username
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("", response_model=TemplateV2Read, status_code=status.HTTP_201_CREATED)
 def create_template_v2(
     db: db_dependency, 
