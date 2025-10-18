@@ -1,4 +1,4 @@
-# Buddhist AI Arena - Backend API
+<h1 align="center"> <br> <a href="https://openpecha.org"><img src="https://avatars.githubusercontent.com/u/82142807?s=400&u=19e108a15566f3a1449bafb03b8dd706a72aebcd&v=4" alt="OpenPecha" width="150"></a> <br> </h1> <h1 align="center">Buddhist AI Arena - Backend API</h1>
 
 A robust FastAPI-based backend service for the Buddhist AI Arena evaluation platform, providing authentication, challenge management, model evaluation, and real-time translation services.
 
