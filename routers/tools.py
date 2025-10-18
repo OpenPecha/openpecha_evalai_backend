@@ -21,8 +21,8 @@ async def get_tools():
     """
     try:
         # Get studio link from environment variable
-        studio_link = os.getenv("STUDIO_LINK", "https://studio.pecha.ai")
-        tools_url = f"{studio_link}/api/tools/public"
+        studio_link = os.getenv("STUDIO_LINK")
+        tools_url = f"{studio_link}/api/tools"
         
         # Make HTTP request to fetch tools
         async with httpx.AsyncClient(timeout=10.0) as client:
