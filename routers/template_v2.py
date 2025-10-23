@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Annotated, List
 import logging
 from database import get_db
-
+import re
 from routers.arena_challenge import get_text_category
 from typing import Dict
 from models.user import User
@@ -130,7 +130,8 @@ def create_template_v2(
     current_user: User = Depends(get_current_active_user)
 ):
     try:
-        is_zero_shot = template_v2.template == "{source}"
+        pattern = re.compile(r"{ucca}|{sanskrit}|{gloss}|{commentaries}")
+        is_zero_shot = not pattern.search(template_v2.template)
         new_template_v2 = TemplateV2(
             template_name=template_v2.template_name,
             template=template_v2.template,
@@ -176,7 +177,8 @@ def create_template_v2(
             raise HTTPException(status_code=403, detail="You are not authorized to update this template")
         
         template.hidden = True
-        is_zero_shot = template_v2.template == "{source}"
+        pattern = re.compile(r"{ucca}|{sanskrit}|{gloss}|{commentaries}")
+        is_zero_shot = not pattern.search(template_v2.template)
         new_template_v2 = TemplateV2(
             template_name=template_v2.template_name,
             template=template_v2.template,
