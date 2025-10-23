@@ -14,5 +14,6 @@ class TemplateV2(Base):
     template = Column(String)
     hidden = Column(Boolean, nullable=True, default=False)
     challenge_id = Column(String, ForeignKey("arena_challenge.id"), nullable=False)
+    is_zero_shot = Column(Boolean, nullable=True, default=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))

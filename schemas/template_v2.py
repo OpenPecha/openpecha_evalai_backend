@@ -14,6 +14,7 @@ class TemplateV2Read(BaseModel):
     challenge_name: str
     from_language: str
     to_language: str
+    is_zero_shot: bool
     created_at: datetime
     updated_at: datetime
     created_by: str

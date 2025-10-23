@@ -72,6 +72,7 @@ def get_all_template_v2(
                         challenge_name=challenge.challenge_name,
                         from_language=challenge.from_language,
                         to_language=challenge.to_language,
+                        is_zero_shot=template.is_zero_shot,
                         created_at=template.created_at,
                         updated_at=template.updated_at,
                         created_by=user.username
@@ -112,6 +113,7 @@ def get_template_by_id(
             challenge_name=challenge.challenge_name,
             from_language=challenge.from_language,
             to_language=challenge.to_language,
+            is_zero_shot=template.is_zero_shot,
             created_at=template.created_at,
             updated_at=template.updated_at,
             created_by=user.username
@@ -128,11 +130,13 @@ def create_template_v2(
     current_user: User = Depends(get_current_active_user)
 ):
     try:
+        is_zero_shot = template_v2.template == "{source}"
         new_template_v2 = TemplateV2(
             template_name=template_v2.template_name,
             template=template_v2.template,
             challenge_id=template_v2.challenge_id,
-            user_id=current_user.id
+            user_id=current_user.id,
+            is_zero_shot=is_zero_shot
         )
         db.add(new_template_v2)
         db.commit()
@@ -151,6 +155,7 @@ def create_template_v2(
             challenge_name=challenge.challenge_name,
             from_language=challenge.from_language,
             to_language=challenge.to_language,
+            is_zero_shot=new_template_v2.is_zero_shot,
             created_at=new_template_v2.created_at,
             updated_at=new_template_v2.updated_at,
             created_by=current_user.username
@@ -171,11 +176,12 @@ def create_template_v2(
             raise HTTPException(status_code=403, detail="You are not authorized to update this template")
         
         template.hidden = True
-        
+        is_zero_shot = template_v2.template == "{source}"
         new_template_v2 = TemplateV2(
             template_name=template_v2.template_name,
             template=template_v2.template,
             challenge_id=template_v2.challenge_id,
+            is_zero_shot=is_zero_shot,
             user_id=current_user.id
         )
         db.add(new_template_v2)
@@ -195,6 +201,7 @@ def create_template_v2(
             challenge_name=challenge.challenge_name,
             from_language=challenge.from_language,
             to_language=challenge.to_language,
+            is_zero_shot=new_template_v2.is_zero_shot,
             created_at=new_template_v2.created_at,
             updated_at=new_template_v2.updated_at,
             created_by=current_user.username
@@ -236,6 +243,7 @@ def get_template_response_by_username_and_challenge_id(db: db_dependency, respon
                 challenge_name=challenge.challenge_name,
                 from_language=challenge.from_language,
                 to_language=challenge.to_language,
+                is_zero_shot=template.is_zero_shot,
                 created_at=template.created_at,
                 updated_at=template.updated_at
             )
