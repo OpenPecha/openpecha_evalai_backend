@@ -1,13 +1,22 @@
 from pathlib import Path
 from fastapi import APIRouter, Body
-
 from botok import Text, sentence_tokenizer, WordTokenizer
 
 router = APIRouter()
 
+# Initialize WordTokenizer once at module load (not on every request)
+_word_tokenizer = None
+
+def get_word_tokenizer():
+    """Lazy initialization of WordTokenizer - downloads dialect pack once."""
+    global _word_tokenizer
+    if _word_tokenizer is None:
+        _word_tokenizer = WordTokenizer()
+    return _word_tokenizer
+
 
 def sent_tok(raw):
-    w = WordTokenizer()
+    w = get_word_tokenizer()  # Reuse the singleton instance
     tokens = w.tokenize(raw, spaces_as_punct=True)
     return sentence_tokenizer(tokens)
 
@@ -31,10 +40,8 @@ def sentence_segmentation(text: str) -> str:
     return t
 
 
-
 @router.post("/tokenizer/sentence_segmentation", response_model=str)
 def sentence_segmentation_endpoint(text: str = Body(..., embed=True)) -> str:
     """Perform sentence segmentation on Tibetan text."""
-
     text = text.strip().replace("\n", "")
     return sentence_segmentation(text)

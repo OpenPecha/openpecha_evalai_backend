@@ -58,11 +58,24 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
+
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize submission processing system when FastAPI starts"""
     start_cache_cleanup()  # Start cache cleanup task
     start_submission_workers()  # Start worker threads
+    
+    # Pre-initialize Botok tokenizer to download dialect pack at startup
+    print("[INFO] Initializing Botok WordTokenizer...")
+    try:
+        from routers.tokenizer import get_word_tokenizer
+        get_word_tokenizer()  # Force download of dialect pack
+        print("[INFO] Botok WordTokenizer initialized successfully!")
+    except Exception as e:
+        print(f"[WARNING] Failed to initialize Botok: {e}")
+        print("[WARNING] Tokenizer endpoints may not work correctly")
 
 def custom_openapi():
     if app.openapi_schema:
