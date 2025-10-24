@@ -1,6 +1,6 @@
 from pathlib import Path
 from fastapi import APIRouter, Body
-from botok import Text, sentence_tokenizer, WordTokenizer
+from third_party.Botok.botok import Text, sentence_tokenizer, WordTokenizer
 
 router = APIRouter()
 
