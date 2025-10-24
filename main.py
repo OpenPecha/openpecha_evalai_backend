@@ -30,7 +30,8 @@ from routers import (
     template_v2, 
     translate_v2, 
     arena_ranking,
-    text_category
+    text_category,
+    tokenizer
 )
 
 # Templates setup
@@ -176,7 +177,7 @@ app.include_router(submission.router)
 app.include_router(result.router)
 app.include_router(tools.router)
 app.include_router(file_upload.router) # for testing. you can comment out.
-
+app.include_router(tokenizer.router)
 
 
 app.include_router(arena_challenge.router)
