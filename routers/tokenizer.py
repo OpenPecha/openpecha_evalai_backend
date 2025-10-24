@@ -10,8 +10,11 @@ _word_tokenizer = None
 def get_word_tokenizer():
     """Lazy initialization of WordTokenizer - downloads dialect pack once."""
     global _word_tokenizer
+    
+    out_dir = Path("/tmp") / "dialects"
+    out_dir.mkdir(exist_ok=True, parents=True)
     if _word_tokenizer is None:
-        _word_tokenizer = WordTokenizer(config=Config(dialect_name="general"))
+        _word_tokenizer = WordTokenizer(config=Config(dialect_name="general",base_path=out_dir))
     return _word_tokenizer
 
 
