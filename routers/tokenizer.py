@@ -1,6 +1,6 @@
 from pathlib import Path
 from fastapi import APIRouter, Body
-from third_party.Botok.botok import Text, sentence_tokenizer, WordTokenizer
+from third_party.Botok.botok import Text, sentence_tokenizer, WordTokenizer,Config
 
 router = APIRouter()
 
@@ -11,7 +11,7 @@ def get_word_tokenizer():
     """Lazy initialization of WordTokenizer - downloads dialect pack once."""
     global _word_tokenizer
     if _word_tokenizer is None:
-        _word_tokenizer = WordTokenizer()
+        _word_tokenizer = WordTokenizer(config=Config(dialect_name="general"))
     return _word_tokenizer
 
 

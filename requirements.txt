@@ -81,3 +81,5 @@ anthropic>=0.7.0
 google-generativeai>=0.3.2
 google-genai>= 1.36.0
 redis>=5.0.0
+
+spacy==3.8.7
