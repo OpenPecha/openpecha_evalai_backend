@@ -1,7 +1,7 @@
 from pathlib import Path
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
 
-from third_party.Botok.botok import Text, sentence_tokenizer, WordTokenizer
+from botok import Text, sentence_tokenizer, WordTokenizer
 
 router = APIRouter()
 
@@ -31,9 +31,10 @@ def sentence_segmentation(text: str) -> str:
     return t
 
 
-@router.get("/sentence-segmentation", response_model=str)
-def sentence_segmentation_endpoint(text: str) -> str:
+
+@router.post("/tokenizer/sentence_segmentation", response_model=str)
+def sentence_segmentation_endpoint(text: str = Body(..., embed=True)) -> str:
     """Perform sentence segmentation on Tibetan text."""
-    
+
     text = text.strip().replace("\n", "")
     return sentence_segmentation(text)

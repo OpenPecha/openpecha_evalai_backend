@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPBearer
 from fastapi.openapi.utils import get_openapi
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse,RedirectResponse
 from fastapi import Request
+
 from database import create_table
 from submission_cache import start_cache_cleanup
 from submission_worker import start_submission_workers
@@ -131,15 +132,11 @@ app.add_middleware(
 
 
 
-@app.get("/")
+
+@app.get("/", include_in_schema=False)
 async def root():
-    """Root endpoint"""
-    return {
-        "message": "Welcome to OpenPecha EvalAI API", 
-        "status": "success",
-        "documentation": "/documentation",
-        "api_docs": "/docs"
-    }
+    """Redirect to API docs"""
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/documentation", response_class=HTMLResponse)
