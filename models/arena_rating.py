@@ -1,5 +1,6 @@
 from database import Base
 from sqlalchemy import Column, String, Float, DateTime, UniqueConstraint, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 import datetime
 import uuid
 
@@ -61,4 +62,4 @@ class BattleResult(Base):
     winner_status = Column(String, default=None, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
-
+    room_id = Column(UUID(as_uuid=True), ForeignKey("room.id"), nullable=True, index=True)

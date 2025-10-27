@@ -9,5 +9,6 @@ from .arena_challege import ArenaChallenge
 from .arena_rating import EloRatingByTemplate, EloRatingByModel, EloRatingByModelAndTemplate, BattleResult
 from .template_v2 import TemplateV2
 from .text_category import TextCategory
+from .room import Room
 
-__all__ = ["User", "Challenge", "Submission", "Category", "Model", "Result", "ModelVersion", "TranslationJob", "TranslationOutput", "Vote", "ArenaChallenge", "TemplateV2", "EloRatingByTemplate", "EloRatingByModel", "EloRatingByModelAndTemplate", "BattleResult", "TextCategory"]
+__all__ = ["User", "Challenge", "Submission", "Category", "Model", "Result", "ModelVersion", "TranslationJob", "TranslationOutput", "Vote", "ArenaChallenge", "TemplateV2", "EloRatingByTemplate", "EloRatingByModel", "EloRatingByModelAndTemplate", "BattleResult", "TextCategory", "Room"]
