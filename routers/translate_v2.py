@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks, 
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db, SessionLocal
-from typing import Annotated, List, Dict, AsyncGenerator
+from typing import Annotated, List, Dict, AsyncGenerator, Optional
 import logging
 import random
 import os
@@ -23,6 +23,8 @@ from models.arena_rating import (
     EloRatingByModel,
     EloRatingByModelAndTemplate
 )
+from models.room import Room
+from CRUD.room import get_or_create_room
 
 from schemas.translate_v2 import (
     TranslateV2Request,
@@ -41,13 +43,17 @@ router = APIRouter(prefix="/arena/translate", tags=["arena","translate"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-LANGGRAPH_URL = os.getenv("LANGGRAPH_URL", "https://eval-api.pecha.ai")
+LANGGRAPH_URL = os.getenv("LANGGRAPH_URL")
 
 _commentary_cache: Dict[str, List[dict]] = {}
 
 
 @router.post("", status_code=status.HTTP_200_OK)
-async def translate_v2(db: db_dependency, request: TranslateV2Request):
+async def translate_v2(db: db_dependency, request: TranslateV2Request, current_user: User = Depends(get_current_active_user)):
+    # Get or create room for this conversation
+    room_id = get_or_create_room(db, request.room_id, current_user.id)
+    logger.info(f"Using room_id: {room_id}")
+    
     random_template_id_1 = request.template_id if request.template_id else get_random_template_v2(db, [], request.challenge_id)
     random_template_id_2 = get_random_template_v2(db, [random_template_id_1], request.challenge_id)
 
@@ -90,11 +96,13 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
         translation_1,
         translation_2,
         model_1,
-        model_2
+        model_2,
+        room_id
     )
 
     return TranslationResponse(
         battle_result_id=battle_result_id,
+        room_id=room_id,
         id_1=random_template_id_1,
         translation_1=translation_1,
         model_1=model_1,
@@ -107,15 +115,19 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
 
 
 @router.post("/stream", status_code=status.HTTP_200_OK)
-async def translate_v2_stream(db: db_dependency, request: TranslateV2Request):
+async def translate_v2_stream(db: db_dependency, request: TranslateV2Request, current_user: User = Depends(get_current_active_user)):
     """Streaming endpoint that yields each step of the translation process"""
     
     async def generate_stream() -> AsyncGenerator[str, None]:
         try:
+            print(f"request: {request}")
+            # Step 0: Get or create room
+            room_id = get_or_create_room(db, request.room_id, current_user.id)
+            
             # Step 1: Select templates
             step_data = StreamStep(
                 step="template_selection",
-                data={"message": "Selecting templates..."},
+                data={"message": "Selecting templates...", "room_id": room_id},
                 status="progress"
             )
             yield f"data: {json.dumps(step_data.dict())}\n\n"
@@ -296,12 +308,13 @@ async def translate_v2_stream(db: db_dependency, request: TranslateV2Request):
                 translation_1,
                 translation_2,
                 model_1,
-                model_2
+                model_2,
+                room_id
             )
 
             step_data = StreamStep(
                 step="battle_result_save",
-                data={"battle_result_id": battle_result_id},
+                data={"battle_result_id": battle_result_id, "room_id": room_id},
                 status="completed"
             )
             yield f"data: {json.dumps(step_data.dict())}\n\n"
@@ -310,6 +323,7 @@ async def translate_v2_stream(db: db_dependency, request: TranslateV2Request):
             # Step 6: Final response
             final_response = TranslationResponse(
                 battle_result_id=battle_result_id,
+                room_id=room_id,
                 id_1=random_template_id_1,
                 translation_1=translation_1,
                 model_1=model_1,
@@ -621,8 +635,9 @@ def load_commentaries():
                     _commentary_cache[json_file] = json.load(f)
     return _commentary_cache
 
-def write_to_battle_result(db: db_dependency, random_template_id_1: str, random_template_id_2: str, challenge_id: str, input_text: str, translation_1: dict, translation_2: dict, model_1: str, model_2: str):
+def write_to_battle_result(db: db_dependency, random_template_id_1: str, random_template_id_2: str, challenge_id: str, input_text: str, translation_1: dict, translation_2: dict, model_1: str, model_2: str, room_id: str):
 
+    import uuid as uuid_lib
     battle_result = BattleResult(
         template_A_id=random_template_id_1,
         template_B_id=random_template_id_2,
@@ -631,7 +646,8 @@ def write_to_battle_result(db: db_dependency, random_template_id_1: str, random_
         output_text_B=str(translation_2),
         model_A=model_1,
         model_B=model_2,
-        challenge_id=challenge_id
+        challenge_id=challenge_id,
+        room_id=uuid_lib.UUID(room_id)
     )
 
     try:

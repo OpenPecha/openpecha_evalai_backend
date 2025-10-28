@@ -12,9 +12,11 @@ class TranslateV2Request(BaseModel):
     template_id: Optional[str] = None
     challenge_id: str
     input_text: str
+    room_id: Optional[str] = None  # For follow-up messages in existing conversation
 
 class TranslationResponse(BaseModel):
     battle_result_id: str
+    room_id: str
     id_1: str
     template_1_name: str
     translation_1: dict

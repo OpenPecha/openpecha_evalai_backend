@@ -32,7 +32,8 @@ from routers import (
     translate_v2, 
     arena_ranking,
     text_category,
-    tokenizer
+    tokenizer,
+    chat
 )
 
 # Templates setup
@@ -186,6 +187,7 @@ app.include_router(template_v2.router)
 app.include_router(translate_v2.router)
 app.include_router(arena_ranking.router)
 app.include_router(text_category.router)
+app.include_router(chat.router)
 
 
 if __name__ == "__main__":
