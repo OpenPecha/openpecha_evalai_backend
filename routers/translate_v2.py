@@ -34,7 +34,7 @@ from schemas.translate_v2 import (
 
 from models.user import User
 from auth import get_current_active_user
-
+from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/arena/translate", tags=["arena","translate"])
@@ -44,6 +44,7 @@ db_dependency = Annotated[Session, Depends(get_db)]
 LANGGRAPH_URL = os.getenv("LANGGRAPH_URL", "https://eval-api.pecha.ai")
 
 _commentary_cache: Dict[str, List[dict]] = {}
+load_dotenv(override=True)
 
 
 @router.post("", status_code=status.HTTP_200_OK)
@@ -55,8 +56,6 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
     random.shuffle(template_ids)
     random_template_id_1, random_template_id_2 = template_ids
 
-    logger.info(f"random_template_id_1: {random_template_id_1}")
-    logger.info(f"random_template_id_2: {random_template_id_2}")
 
     try:
         template_1 = db.query(TemplateV2).filter(TemplateV2.id == random_template_id_1).first()
@@ -67,8 +66,6 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
     model_1 = get_random_model_v2()
     model_2 = get_random_model_v2(model_1)
 
-    logger.info(f"model_1: {model_1}")
-    logger.info(f"model_2: {model_2}")
 
     async with asyncio.TaskGroup() as tg:
         translation_1_task = tg.create_task(generate_translation_async(db, model_1, template_1, request.input_text))
@@ -77,8 +74,6 @@ async def translate_v2(db: db_dependency, request: TranslateV2Request):
     translation_1 = translation_1_task.result()
     translation_2 = translation_2_task.result()
     
-    logger.info(f"translation_1: {translation_1}")
-    logger.info(f"translation_2: {translation_2}")
 
 
     battle_result_id = write_to_battle_result(
@@ -1086,9 +1081,11 @@ def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""
    
     model_providers = os.getenv("MODEL_PROVIDERS", None)
+    print(f"Model providers: {model_providers}")
     if model_providers:
         data= json.loads(model_providers)
         return data
+    return []
         
 
 def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], challenge_id: str):
@@ -1112,9 +1109,6 @@ def get_random_model_v2(exclude_model:str = None):
 
 @router.get("/suggest_model", status_code=status.HTTP_200_OK)
 async def suggest_models(
-    db: db_dependency,
-    source_text: str = Query(None, description="Source text to analyze for model suggestions"),
-    challenge_id: str = Query(None, description="Challenge ID for context")
 ):
     """
     Suggest two models for translation comparison based on available models and ratings.
@@ -1123,6 +1117,7 @@ async def suggest_models(
     try:
         # Get available models from the model providers
         available_models = list(get_model_providers().keys())
+        print(f"Available models: {available_models}")
         
         if len(available_models) < 2:
             raise HTTPException(
@@ -1137,9 +1132,6 @@ async def suggest_models(
         
         # Determine selection method
         selection_method = "random"
-        if source_text:
-            # You could add more sophisticated logic here based on source text analysis
-            selection_method = "text_analysis"
         
         return {
             "model_a": model_a,
