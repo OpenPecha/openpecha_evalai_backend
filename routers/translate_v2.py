@@ -1084,17 +1084,12 @@ def check_sanskrit_present(template: str):
 
 def get_model_providers():
     """Get model providers from environment variable with fallback to default configuration"""
-    default_providers = {
-        "claude-3-5-sonnet-20241022": "anthropic",
-        "claude-3-7-sonnet-20250219": "anthropic",
-        "claude-sonnet-4-20250514": "anthropic",
-        "claude-3-5-haiku-20241022": "anthropic",
-        "claude-3-opus-20240229": "anthropic",
-        "gemini-2.5-pro": "google",
-        "gemini-2.5-flash-thinking": "google",
-        "gemini-2.5-flash": "google"
-    }
-    return default_providers
+   
+    model_providers = os.getenv("MODEL_PROVIDERS", None)
+    if model_providers:
+        data= json.loads(model_providers)
+        return data
+        
 
 def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], challenge_id: str):
     try:
