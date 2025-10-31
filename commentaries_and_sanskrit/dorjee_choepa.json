@@ -1,5 +1,49 @@
 [
   {
+    "metadata": {
+      "root": {
+        "title": {
+          "bo": "རྡོ་རྗེ་གཅོད་པ་ཞེས་བྱ་བ་ཐེག་པ་ཆེན་པོའི་མདོ།",
+          "en": "The Sutra of the Great Vehicle Called the Diamond Cutter"
+        },
+        "author": {
+          "bo": "སྟོན་པ་བཅོམ་ལྡན་འདས།",
+          "en": "Buddha"
+        }
+      },
+      "commentary_1": {
+        "title": {
+          "en": "commentary_1 title"
+        },
+        "author": {
+          "en": "author of commentary_1"
+        }
+      },
+      "commentary_2": {
+        "title": {
+          "en": "commentary_2 title"
+        },
+        "author": {
+          "en": "author of commentary_2"
+        }
+      },
+      "commentary_3": {
+        "title": {
+          "en": "commentary_3 title"
+        },
+        "author": {
+          "en": "author of commentary_3"
+        }
+      },
+      "sanskrit_text": {
+        "title": {
+          "sa": "वज्रच्छेदिका नाम त्रिशतिका प्रज्ञापारमिता।"
+        },
+        "author": "author of sanskrit"
+      }
+    }
+  },
+  {
     "root_display_text": "༄༅། །འཕགས་པ་ཤེས་རབ་ཀྱི་ཕ་རོལ་ཏུ་ཕྱིན་པ་རྡོ་རྗེ་གཅོད་པ་ཞེས་བྱ་བ་བཞུགས་སོ། །\n",
     "commentary_1": "",
     "commentary_2": "",
