@@ -1,51 +1,5 @@
 [
   {
-    "metadata": {
-      "root": {
-        "title": {
-          "bo": "བྱང་ཆུབ་སེམས་དཔའི་སྤྱོད་པ་ལ་འཇུག་པ།",
-          "en": "The Way of the Bodhisattva"
-        },
-        "author": {
-          "bo":"རྒྱལ་སྲས་ཞི་བ་ལྷ།",
-          "en": "Shantideva"
-        }
-      },
-      "commentary_1": {
-        "title": {
-          "bo": "ཀུན་དཔལ། འཇམ་དབྱངས་བླ་མའི་ཞལ་ལུང་།",
-          "en": "Khenpo Kunpel's commentary on the Bodhicaryavatara"
-        },
-        "author": {
-          "en": "author of commentary_1"
-        }
-      },
-      "commentary_2": {
-        "title": {
-          "en": "commentary_2 title"
-        },
-        "author": {
-          "en": "author of commentary_2"
-        }
-      },
-      "commentary_3": {
-        "title": {
-          "en": "Tokme Zangpo, The Ocean of Good Saying",
-          "bo": "ཐོགས་མེད་བཟང་པོ། སྤྱོད་འགྲེལ་ལེགས་བཤད་རྒྱ་མཚོ།"
-        },
-        "author": {
-          "en": "author of commentary_3"
-        }
-      },
-      "sanskrit_text": {
-        "title": {
-          "sa": "शबोधिचर्यावतार"
-        },
-        "author": "author of sanskrit"
-      }
-    }
-  },
-  {
     "root_display_text": "Ch-1༄། །བྱང་ཆུབ་སེམས་དཔའི་སྤྱོད་པ་ལ་འཇུག་པ་བཞུགས་སོ། །\n",
     "commentary_1": "",
     "commentary_2": "",

@@ -1,48 +1,5 @@
 [
   {
-    "metadata": {
-      "root": {
-        "title": {
-          "bo": "འཕགས་པ་ཤེས་རབ་ཀྱི་ཕ་རོལ་ཏུ་ཕྱིན་པ་སྡུད་པ་ཚིགས་སུ་བཅད་པ།",
-          "en": "The Verses Condensing the Perfection of Wisdom"
-        },
-        "author": {
-          "en": "phakdoe"
-        }
-      },
-      "commentary_1": {
-        "title": {
-          "en": "commentary_1 title"
-        },
-        "author": {
-          "en": "author of commentary_1"
-        }
-      },
-      "commentary_2": {
-        "title": {
-          "en": "commentary_2 title"
-        },
-        "author": {
-          "en": "author of commentary_2"
-        }
-      },
-      "commentary_3": {
-        "title": {
-          "en": "commentary_3 title"
-        },
-        "author": {
-          "en": "author of commentary_3"
-        }
-      },
-      "sanskrit_text": {
-        "title": {
-          "sa": "आर्यप्रज्ञापारमिताहृदयसूत्रं"
-        },
-        "author": "author of sanskrit"
-      }
-    }
-  },
-  {
     "root_display_text": "ཤེས་རབ་ཀྱི་ཕ་རོལ་ཏུ་ཕྱིན་པ་སྡུད་པ་ཚིགས་སུ་བཅད་པ།\n",
     "commentary_1": "",
     "commentary_2": "",
