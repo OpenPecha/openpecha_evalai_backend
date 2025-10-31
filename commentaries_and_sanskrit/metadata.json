@@ -12,35 +12,41 @@
         },
         "commentary_1": {
             "title": {
-                "bo": "ཀུན་དཔལ། འཇམ་དབྱངས་བླ་མའི་ཞལ་ལུང་།",
-                "en": "Khenpo Kunpel's commentary on the Bodhicaryavatara"
+                "bo": "འཇམ་དབྱངས་བླ་མའི་ཞལ་ལུང་།",
+                "en": "Nectar of Manjushri's Speech"
             },
             "author": {
-                "en": "author of commentary_1"
+                "bo": "མཁྱེན་པོ་ཀུན་བཟང་དཔལ་ལྡན།",
+                "en": "Khenpo Kunsang Palden"
             }
         },
         "commentary_2": {
             "title": {
-                "en": "commentary_2 title"
+                "bo": "​སྤྱོད་འཇུག་རྩ་འགྲེལ་ཆེན་མོ།",
+                "en": "The Great Commentary of the Bodhicaryāvatāra"
             },
             "author": {
-                "en": "author of commentary_2"
+                "bo": "རྒྱལ་ཚབ་དར་མ་རིན་ཆེན།",
+                "en": "Gyaltsab Dharma Rinchen"
             }
         },
         "commentary_3": {
             "title": {
-                "en": "Tokme Zangpo, The Ocean of Good Saying",
-                "bo": "ཐོགས་མེད་བཟང་པོ། སྤྱོད་འགྲེལ་ལེགས་བཤད་རྒྱ་མཚོ།"
+                "en": "The Ocean of Good Saying",
+                "bo": "སྤྱོད་འགྲེལ་ལེགས་བཤད་རྒྱ་མཚོ།"
             },
             "author": {
-                "en": "author of commentary_3"
+                "bo": "ཐོགས་མེད་བཟང་པོ།",
+                "en": "Tokme Zangpo"
             }
         },
         "sanskrit_text": {
             "title": {
                 "sa": "शबोधिचर्यावतार"
             },
-            "author": "author of sanskrit"
+            "author": {
+                "en": "author of sanskrit"
+            }
         }
     },
     "dorjee_choepa": {
@@ -56,23 +62,24 @@
         },
         "commentary_1": {
             "title": {
-                "en": "commentary_1 title"
+                "bo": "འཕགས་པ་བཅོམ་ལྡན་འདས་མ་ཤེས་རབ་ཀྱི་ཕ་རོལ་ཏུ་ཕྱིན་པ་རྡོ་རྗེ་གཅོད་པའི་དོན་བདུན་གྱི་རྒྱ་ཆེར་འགྲེལ་པ།"
             },
             "author": {
+                "bo": "",
                 "en": "author of commentary_1"
             }
         },
         "commentary_2": {
             "title": {
-                "en": "commentary_2 title"
+                "bo": "ཐར་བར་བགྲོད་པའི་ལམ་བཟང་ཟབ་དོན་གསལ་བའི་ཉི་མ་ཞེས་བྱ་བ་བཞུགས།"
             },
             "author": {
-                "en": "author of commentary_2"
+                "bo": "དགེ་སློང་གྲགས་པ་བཤད་སྒྲུབ་"
             }
         },
         "commentary_3": {
             "title": {
-                "en": "commentary_3 title"
+                "bo": "འཕགས་པ་ཤེས་རབ་ཀྱི་ཕ་རོལ་ཏུ་ཕྱིན་པ་རྡོ་རྗེ་གཅོད་པའི་རྒྱ་ཆེར་འགྲེལ་པ།"
             },
             "author": {
                 "en": "author of commentary_3"
@@ -82,7 +89,9 @@
             "title": {
                 "sa": "वज्रच्छेदिका नाम त्रिशतिका प्रज्ञापारमिता।"
             },
-            "author": "author of sanskrit"
+            "author": {
+                "en": "Buddha"
+            }
         }
     },
     "phakpa_duepa": {
@@ -123,7 +132,9 @@
             "title": {
                 "sa": "आर्यप्रज्ञापारमिताहृदयसूत्रं"
             },
-            "author": "author of sanskrit"
+            "author": {
+                "en": "author of sanskrit"
+            }
         }
     },
     "sherab_nyinpo": {
@@ -167,7 +178,9 @@
             "title": {
                 "sa": "प्रज्ञापारमिताहृदय"
             },
-            "author": "author of sanskrit"
+            "author": {
+                "en": "author of sanskrit"
+            }
         }
     }
 }
