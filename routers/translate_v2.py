@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks, 
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db, SessionLocal
-from typing import Annotated, List, Dict, AsyncGenerator
+from typing import Annotated, List, Dict, AsyncGenerator, Any, Optional
 import logging
 import random
 import os
@@ -13,7 +13,6 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import aiohttp
-import os
 
 from models.arena_challege import ArenaChallenge
 from models.template_v2 import TemplateV2
@@ -41,7 +40,7 @@ router = APIRouter(prefix="/arena/translate", tags=["arena","translate"])
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-LANGGRAPH_URL = os.getenv("LANGGRAPH_URL", "https://eval-api.pecha.ai")
+LANGGRAPH_URL = os.getenv("LANGGRAPH_URL")
 
 _commentary_cache: Dict[str, List[dict]] = {}
 load_dotenv(override=True)
@@ -706,7 +705,7 @@ async def generate_translation_async_stream(db: db_dependency, model: str, templ
             data={"message": f"Analyzing template requirements for {model}..."},
             status="progress"
         )
-        
+
         is_ucca_present = check_ucca_present(template.template)
         is_gloss_present = check_gloss_present(template.template)
         is_commentaries_present = check_commentaries_present(template.template)
@@ -736,8 +735,9 @@ async def generate_translation_async_stream(db: db_dependency, model: str, templ
             data={"message": "Fetching commentaries and sanskrit..."},
             status="progress"
         )
-
+        print(f"line 739:")
         commentaries_and_sanskrit = get_commentaries_and_sanskrit(input_text)
+        print(f"line 741:::")
         if is_commentaries_present:
             commentaries_1 = commentaries_and_sanskrit["commentary_1"]
             commentaries_2 = commentaries_and_sanskrit["commentary_2"]
@@ -1046,9 +1046,11 @@ async def get_ucca_async(input_text: str, commentaries_and_sanskrit: dict, model
 def get_commentaries_and_sanskrit(input_text: str):
     """Optimized version using cached data and better search"""
     commentaries = load_commentaries()
-    
+
     # Use a more efficient search strategy
     for file_data in commentaries.values():
+        if not isinstance(file_data, list):
+            continue
         for entry in file_data:
             root_display_text = entry.get("root_display_text", "")
             # Quick length check before expensive fuzzy matching
@@ -1075,17 +1077,28 @@ def check_commentaries_present(template: str):
 def check_sanskrit_present(template: str):
     return "{sanskrit}" in template
 
+def get_model_providers() -> Dict[str, Dict[str, Any]]:
+    """Fetch available models from the external service"""
 
+    if not LANGGRAPH_URL:
+        logger.error("LANGGRAPH_URL environment variable is required to fetch model providers")
+        return {}
 
-def get_model_providers():
-    """Get model providers from environment variable with fallback to default configuration"""
-   
-    model_providers = os.getenv("MODEL_PROVIDERS", None)
-    print(f"Model providers: {model_providers}")
-    if model_providers:
-        data= json.loads(model_providers)
-        return data
-    return []
+    try:
+        response = requests.get(f"{LANGGRAPH_URL}/models", timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+        return payload
+    except requests.RequestException as exc:
+        logger.warning(
+            "Failed to fetch model providers from %s: %s", LANGGRAPH_URL, exc
+        )
+    except ValueError as exc:
+        logger.warning(
+            "Failed to decode model providers response from %s: %s", LANGGRAPH_URL, exc
+        )
+    logger.warning("No model providers available from remote service or cache")
+    return {}
         
 
 def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], challenge_id: str):
@@ -1100,11 +1113,19 @@ def get_random_template_v2(db: db_dependency, exclude_template_id: List[str], ch
         logger.error(f"Error getting random template: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_random_model_v2(exclude_model:str = None):
-    model = random.choice(list(get_model_providers().keys()))
-    if exclude_model and model == exclude_model:
-            return get_random_model_v2(exclude_model)
-    return model
+def get_random_model_v2(exclude_model: Optional[str] = None) -> str:
+    providers = get_model_providers()
+    available_models = list(providers.keys())
+    if not available_models:
+        raise HTTPException(status_code=503, detail="No model providers available")
+
+    if exclude_model:
+        filtered_models = [model for model in available_models if model != exclude_model]
+        if not filtered_models:
+            raise HTTPException(status_code=400, detail="No alternative models available")
+        available_models = filtered_models
+
+    return random.choice(available_models)
 
 
 @router.get("/suggest_model", status_code=status.HTTP_200_OK)
