@@ -72,7 +72,7 @@ def get_all_template_v2(
                         challenge_name=challenge.challenge_name,
                         from_language=challenge.from_language,
                         to_language=challenge.to_language,
-                        is_zero_shot=template.is_zero_shot,
+                        is_zero_shot=template.is_zero_shot if template.is_zero_shot is not None else False,
                         created_at=template.created_at,
                         updated_at=template.updated_at,
                         created_by=user.username
@@ -113,7 +113,7 @@ def get_template_by_id(
             challenge_name=challenge.challenge_name,
             from_language=challenge.from_language,
             to_language=challenge.to_language,
-            is_zero_shot=template.is_zero_shot,
+            is_zero_shot=template.is_zero_shot if template.is_zero_shot is not None else False,
             created_at=template.created_at,
             updated_at=template.updated_at,
             created_by=user.username
@@ -245,7 +245,7 @@ def get_template_response_by_username_and_challenge_id(db: db_dependency, respon
                 challenge_name=challenge.challenge_name,
                 from_language=challenge.from_language,
                 to_language=challenge.to_language,
-                is_zero_shot=template.is_zero_shot,
+                is_zero_shot=template.is_zero_shot if template.is_zero_shot is not None else False,
                 created_at=template.created_at,
                 updated_at=template.updated_at
             )
